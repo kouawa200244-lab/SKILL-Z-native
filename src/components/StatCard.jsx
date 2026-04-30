@@ -6,7 +6,7 @@ export default function StatCard({ label, value, color = T.gold, icon: Icon, wid
   return (
     <View style={[styles.card, { width }]}>
       <View style={styles.header}>
-        {Icon && <Icon size={16} color={T.muted} style={{ marginRight: 6 }} />}
+        {Icon && <Icon size={14} color={color} style={{ marginRight: 6 }} />}
         <Text style={styles.label}>{label}</Text>
       </View>
       <Text style={[styles.value, { color }]}>{value}</Text>
@@ -17,13 +17,11 @@ export default function StatCard({ label, value, color = T.gold, icon: Icon, wid
 const styles = StyleSheet.create({
   card: {
     backgroundColor: T.card,
-    borderRadius: T.radiusSm,
+    borderRadius: T.radius,
     padding: 14,
     justifyContent: 'center',
-    alignItems: 'flex-start',
     borderWidth: 1,
     borderColor: T.border,
-    marginBottom: 0,
   },
   header: {
     flexDirection: 'row',
@@ -38,8 +36,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   value: {
-    fontFamily: 'JetBrainsMono-Regular',
-    fontSize: 20,
+    fontFamily: T.fontMono,
+    fontSize: 18,
     fontWeight: '700',
     letterSpacing: 1,
   },
