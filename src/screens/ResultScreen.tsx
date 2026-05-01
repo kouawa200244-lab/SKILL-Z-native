@@ -1,213 +1,177 @@
 // @ts-nocheck
-import React, { useEffect, useRef } from 'react';
+// =======================
+// =====================================
+// src/screens/ResultScreen.tsx — VERSION BACKEND
+// Appelle betService.playBet() au moment du résultat
+// L'argent bouge en temps réel dans Supabase
+// ============================================================
+
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Animated,
+  View, Text, TouchableOpacity, StyleSheet,
+  ActivityIndicator, Alert
 } from 'react-native';
-import {
-  Trophy,
-  Skull,
-  Shield,
-  PlusCircle,
-  LayoutDashboard,
-  Zap,
-} from 'lucide-react-native';
-import { GAMES } from '../constants/games';
 import { T } from '../utils/designTokens';
 import { fmt } from '../utils/helpers';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { PALIERS } from '../constants/paliers';
+import {
+  playBet,
+  calculateGain,
+  calculateFilet,
+  fetchWalletBalance,
+} from '../services/betService';
 
-export default function ResultScreen() {
-  const navigation = useNavigation();
-  const route = useRoute();
-  const { bet } = route.params || {};
+export default function ResultScreen({ navigation, route }: any) {
+  const {
+    gameKey, defi, player, mise,
+    outcome, userId, sessionId,
+    durationSecs, validationMode, witnessName,
+  } = route.params || {};
 
-  const win = bet?.outcome === 'win';
-  const gain = Math.round((bet?.mise || 0) * (bet?.cote || 1));
-  const col = win ? T.success : T.danger;
+  const [processing, setProcessing] = useState(true);
+  const [betResult,  setBetResult]  = useState<any>(null);
+  const [newBalance, setNewBalance] = useState<number | null>(null);
 
-  // Animation de slam
-  const scaleAnim = useRef(new Animated.Value(0.5)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const pc     = PALIERS[defi?.p] || {};
+  const gain   = calculateGain(mise, defi?.cote || 1);
+  const filet  = outcome === 'loss' ? calculateFilet(mise, defi?.cote || 1) : 0;
+  const win    = outcome === 'win';
+  const col    = win ? T.success : T.danger;
 
+  // Appel backend au montage — une seule fois
   useEffect(() => {
-    Animated.parallel([
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        friction: 4,
-        tension: 80,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    async function processBet() {
+      const result = await playBet({
+        userId,
+        sessionId,
+        playerName:     player,
+        game:           gameKey,
+        defiId:         defi?.id,
+        defiNom:        defi?.nom,
+        palier:         defi?.p,
+        cote:           defi?.cote,
+        mise,
+        outcome,
+        durationSecs:   durationSecs || 0,
+        validationMode: validationMode || 'room',
+        witnessName,
+      });
+
+      if (!result.success) {
+        Alert.alert('Erreur', result.error || 'Impossible d\'enregistrer le résultat.');
+      }
+
+      // Récupérer le nouveau solde
+      const balance = await fetchWalletBalance(userId);
+
+      setBetResult(result);
+      setNewBalance(balance);
+      setProcessing(false);
+    }
+
+    processBet();
   }, []);
 
-  const defi = bet?.defi;
-  const g = GAMES[bet?.game] || {};
-  const filet = bet?.filet || 0;
+  // ── Écran de traitement ───────────────────────────────────
+  if (processing) {
+    return (
+      <View style={s.screen}>
+        <ActivityIndicator size="large" color={T.physique} />
+        <Text style={s.processingTxt}>Enregistrement du résultat...</Text>
+      </View>
+    );
+  }
 
+  // ── Écran résultat final ──────────────────────────────────
   return (
-    <View style={styles.screen}>
-      <Animated.View style={[styles.content, { opacity: opacityAnim }]}>
-        {/* Statut */}
-        <Text style={[styles.statusLabel, { color: col }]}>
-          {win ? 'VICTOIRE' : 'DÉFAITE'}
-        </Text>
+    <View style={s.screen}>
 
-        {/* Joueur */}
-        <Text style={styles.playerName}>
-          {(bet?.player || 'JOUEUR').toUpperCase()}
-        </Text>
+      {/* Label victoire / défaite */}
+      <Text style={[s.outcomeLabel, { color: col }]}>
+        {win ? 'VICTOIRE' : 'DÉFAITE'}
+      </Text>
 
-        {/* Défi */}
-        <Text style={styles.defiNom}>
-          {defi?.nom} · {g.label} · ×{bet?.cote?.toFixed(2)}
-        </Text>
+      {/* Nom du joueur */}
+      <Text style={s.playerName}>{player?.toUpperCase()}</Text>
 
-        {/* Montant animé */}
-        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-          <Text style={[styles.amount, { color: col }]}>
-            {win ? `+${fmt(gain)} F` : `-${fmt((bet?.mise || 0) - filet)} F`}
-          </Text>
-        </Animated.View>
+      {/* Défi info */}
+      <Text style={[s.defiNom, { color: pc.color || T.muted }]}>{defi?.nom}</Text>
+      <Text style={s.defiMeta}>
+        {gameKey?.toUpperCase()} · ×{defi?.cote?.toFixed(2)}
+      </Text>
 
-        {/* Filet si applicable */}
-        {!win && filet > 0 && (
-          <View style={styles.filetRow}>
-            <Shield size={18} color={T.intellect} />
-            <Text style={styles.filetText}>
-              FILET SKILL'Z : {fmt(filet)} F remboursés
-            </Text>
-          </View>
-        )}
+      {/* Montant principal */}
+      <Text style={[s.amount, { color: col }]}>
+        {win ? `+${fmt(gain)} F` : `-${fmt(mise - filet)} F`}
+      </Text>
 
-        {/* Message */}
-        <Text style={styles.message}>
-          {win
-            ? 'Félicitations ! Tu remportes ce défi.'
-            : `SKILL'Z garde ${fmt((bet?.mise || 0) - filet)} F. Retente ta chance !`}
-        </Text>
-
-        {/* Boutons */}
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={[styles.button, styles.primaryButton]}
-            onPress={() => navigation.navigate('NewDefi')}
-          >
-            <PlusCircle size={20} color={T.textInverse} />
-            <Text style={styles.primaryButtonText}>NOUVEAU DÉFI</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.button, styles.secondaryButton]}
-            onPress={() => navigation.navigate('Lobby')}
-          >
-            <LayoutDashboard size={20} color={T.muted} />
-            <Text style={styles.secondaryButtonText}>ACCUEIL</Text>
-          </TouchableOpacity>
+      {/* Filet SKILL si applicable */}
+      {!win && filet > 0 && (
+        <View style={s.filetBox}>
+          <Text style={s.filetLabel}>FILET SKILL</Text>
+          <Text style={s.filetAmount}>+{fmt(filet)} F remboursés</Text>
         </View>
-      </Animated.View>
+      )}
+
+      {/* Nouveau solde */}
+      {newBalance !== null && (
+        <View style={s.balanceBox}>
+          <Text style={s.balanceLabel}>Nouveau solde</Text>
+          <Text style={s.balanceValue}>{fmt(newBalance)} F</Text>
+        </View>
+      )}
+
+      {/* Message */}
+      <Text style={s.message}>
+        {win
+          ? 'Félicitations — tu as prouvé ta valeur !'
+          : filet > 0
+            ? `SKILLBET garde ${fmt(mise - filet)} F`
+            : 'Pas cette fois. Reviens plus fort.'
+        }
+      </Text>
+
+      {/* Boutons */}
+      <View style={s.btnRow}>
+        <TouchableOpacity
+          style={s.primaryBtn}
+          onPress={() => navigation.popToTop()}
+          activeOpacity={0.85}
+        >
+          <Text style={s.primaryTxt}>+ NOUVEAU DÉFI</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={s.secondaryBtn}
+          onPress={() => navigation.navigate('HomeTab')}
+          activeOpacity={0.85}
+        >
+          <Text style={s.secondaryTxt}>ACCUEIL</Text>
+        </TouchableOpacity>
+      </View>
+
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: T.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  content: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  statusLabel: {
-    fontFamily: T.fontTitle,
-    fontSize: 22,
-    letterSpacing: 6,
-    marginBottom: 12,
-  },
-  playerName: {
-    fontFamily: T.fontTitle,
-    fontSize: 40,
-    color: T.text,
-    letterSpacing: 3,
-    marginBottom: 8,
-  },
-  defiNom: {
-    fontFamily: T.fontBody,
-    fontSize: 14,
-    color: T.muted,
-    marginBottom: 32,
-    textAlign: 'center',
-  },
-  amount: {
-    fontFamily: T.fontMono,
-    fontSize: 64,
-    fontWeight: '800',
-    letterSpacing: 2,
-    marginBottom: 16,
-  },
-  filetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 16,
-  },
-  filetText: {
-    fontFamily: T.fontBody,
-    fontSize: 16,
-    color: T.intellect,
-    fontWeight: '600',
-  },
-  message: {
-    fontFamily: T.fontBody,
-    fontSize: 14,
-    color: T.muted,
-    textAlign: 'center',
-    marginBottom: 40,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  primaryButton: {
-    backgroundColor: T.gold,
-  },
-  primaryButtonText: {
-    fontFamily: T.fontTitle,
-    fontSize: 16,
-    color: T.textInverse,
-    letterSpacing: 2,
-  },
-  secondaryButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: T.border,
-  },
-  secondaryButtonText: {
-    fontFamily: T.fontTitle,
-    fontSize: 16,
-    color: T.muted,
-    letterSpacing: 2,
-  },
+const s = StyleSheet.create({
+  screen:        { flex:1, backgroundColor:T.bg, justifyContent:'center', alignItems:'center', padding:24 },
+  processingTxt: { fontFamily:T.fontBody, fontSize:14, color:T.muted, marginTop:20 },
+  outcomeLabel:  { fontFamily:T.fontTitle, fontSize:14, letterSpacing:6, marginBottom:12 },
+  playerName:    { fontFamily:T.fontTitle, fontSize:40, color:T.text, letterSpacing:3, marginBottom:6, textAlign:'center' },
+  defiNom:       { fontFamily:T.fontTitle, fontSize:20, fontWeight:'700', marginBottom:4, textAlign:'center' },
+  defiMeta:      { fontFamily:T.fontBody, fontSize:13, color:T.muted, marginBottom:24 },
+  amount:        { fontFamily:T.fontMono, fontSize:64, fontWeight:'900', lineHeight:70, marginBottom:8 },
+  filetBox:      { backgroundColor:'rgba(168,85,247,0.1)', borderRadius:12, padding:12, alignItems:'center', marginBottom:12, borderWidth:0.5, borderColor:'rgba(168,85,247,0.3)', width:'100%' },
+  filetLabel:    { fontFamily:T.fontBody, fontSize:11, color:'#A855F7', letterSpacing:2, marginBottom:4 },
+  filetAmount:   { fontFamily:T.fontMono, fontSize:18, fontWeight:'700', color:'#A855F7' },
+  balanceBox:    { backgroundColor:T.card, borderRadius:12, padding:12, alignItems:'center', marginBottom:16, width:'100%', borderWidth:1, borderColor:T.border },
+  balanceLabel:  { fontFamily:T.fontBody, fontSize:11, color:T.muted, letterSpacing:1, marginBottom:4 },
+  balanceValue:  { fontFamily:T.fontMono, fontSize:24, fontWeight:'700', color:T.gold },
+  message:       { fontFamily:T.fontBody, fontSize:13, color:T.muted, textAlign:'center', marginBottom:36 },
+  btnRow:        { flexDirection:'row', gap:12, width:'100%' },
+  primaryBtn:    { flex:1, backgroundColor:T.physique, borderRadius:60, padding:14, alignItems:'center' },
+  primaryTxt:    { fontFamily:T.fontTitle, fontSize:16, color:'#fff', letterSpacing:2 },
+  secondaryBtn:  { flex:1, backgroundColor:'transparent', borderRadius:60, padding:14, alignItems:'center', borderWidth:1, borderColor:T.border },
+  secondaryTxt:  { fontFamily:T.fontTitle, fontSize:16, color:T.muted, letterSpacing:2 },
 });

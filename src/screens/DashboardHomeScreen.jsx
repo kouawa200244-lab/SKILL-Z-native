@@ -218,7 +218,7 @@ export default function DashboardHomeScreen() {
       <View style={styles.floatingButtonContainer}>
         <TouchableOpacity
           style={styles.floatingButton}
-          onPress={() => navigation.navigate('NewDefi')}
+        onPress={() => navigation.navigate('GameSelect')}
           activeOpacity={0.85}
         >
           <Zap size={20} color="#fff" />

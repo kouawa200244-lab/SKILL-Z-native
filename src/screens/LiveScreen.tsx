@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Animated,
   Vibration,
-  Dimensions,
 } from 'react-native';
 import {
   ArrowLeft,
@@ -17,8 +16,6 @@ import {
   Zap,
   Gamepad2,
   Dumbbell,
-  Camera,
-  CameraOff,
 } from 'lucide-react-native';
 import { GAMES } from '../constants/games';
 import { PALIERS } from '../constants/paliers';
@@ -28,13 +25,11 @@ import CoteDisplay from '../components/CoteDisplay';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSession } from '../context/SessionContext';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 export default function LiveScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const { bet } = route.params || {};
-  const { playBet, addToHistory } = useSession();
+  const { user, sessionId } = useSession(); // userId et sessionId depuis le contexte
 
   const [tick, setTick] = useState(0);
   const [isRunning, setIsRunning] = useState(true);
@@ -75,28 +70,26 @@ export default function LiveScreen() {
   const mins = pad2(Math.floor(tick / 60));
   const secs = pad2(tick % 60);
 
-  const handleResult = (outcome) => {
+  const handleResult = (outcome: 'win' | 'loss') => {
     clearInterval(intervalRef.current);
     setIsRunning(false);
     Vibration.vibrate(200);
 
-    const finalBet = {
-      ...bet,
+    // Construire les paramètres que ResultScreen attend
+    const resultParams = {
+      userId: user?.id,
+      sessionId: sessionId || undefined,
+      gameKey,
+      defi,
+      player,
+      mise,
       outcome,
-      gain: outcome === 'win' ? gain : -mise,
-      duration: tick,
-      ts: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      durationSecs: tick,
+      validationMode: 'room',
+      witnessName: undefined,
     };
 
-    if (addToHistory) {
-      addToHistory(finalBet);
-    }
-
-    if (playBet) {
-      playBet(bet);
-    }
-
-    navigation.replace('Result', { bet: finalBet });
+    navigation.replace('Result', resultParams);
   };
 
   return (
@@ -105,23 +98,6 @@ export default function LiveScreen() {
       <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
         <ArrowLeft size={24} color={T.muted} />
       </TouchableOpacity>
-
-      {/* Placeholder caméra pour les défis physiques */}
-      {isPhysique && (
-        <View style={styles.cameraPlaceholder}>
-          <View style={styles.cameraIconContainer}>
-            <Camera size={40} color={T.physique} />
-          </View>
-          <Text style={styles.cameraTitle}>VALIDATION PAR CAMÉRA</Text>
-          <Text style={styles.cameraSubtitle}>
-            La caméra s'activera automatiquement pour analyser ton mouvement et valider tes répétitions.
-          </Text>
-          <View style={styles.cameraBadge}>
-            <CameraOff size={14} color={T.muted} />
-            <Text style={styles.cameraBadgeText}>MediaPipe sera intégré ici</Text>
-          </View>
-        </View>
-      )}
 
       {/* Chronomètre */}
       <View style={styles.timerContainer}>
@@ -188,13 +164,6 @@ export default function LiveScreen() {
           </TouchableOpacity>
         </Animated.View>
       </View>
-
-      {/* Note en bas pour les défis physiques */}
-      {isPhysique && (
-        <Text style={styles.note}>
-          En mode test, valide toi-même ton score. La validation automatique arrivera bientôt.
-        </Text>
-      )}
     </View>
   );
 }
@@ -213,69 +182,13 @@ const styles = StyleSheet.create({
     left: 20,
     zIndex: 10,
   },
-  // Placeholder caméra
-  cameraPlaceholder: {
-    width: SCREEN_WIDTH - 48,
-    height: 180,
-    backgroundColor: '#0a0a0a',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: T.physique + '30',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    marginBottom: 20,
-  },
-  cameraIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: T.physique + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: T.physique + '30',
-  },
-  cameraTitle: {
-    fontFamily: T.fontTitle,
-    fontSize: 16,
-    color: T.physique,
-    letterSpacing: 2,
-    marginBottom: 6,
-  },
-  cameraSubtitle: {
-    fontFamily: T.fontBody,
-    fontSize: 12,
-    color: T.muted,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 10,
-  },
-  cameraBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#121212',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#222',
-  },
-  cameraBadgeText: {
-    fontFamily: T.fontBody,
-    fontSize: 11,
-    color: T.muted,
-  },
-  // Chronomètre
   timerContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 30,
   },
   timerText: {
     fontFamily: T.fontMono,
-    fontSize: 56,
+    fontSize: 64,
     fontWeight: '800',
     color: T.gold,
     letterSpacing: 4,
@@ -286,19 +199,18 @@ const styles = StyleSheet.create({
     color: T.muted,
     marginTop: 4,
   },
-  // Carte défi
   defiCard: {
     backgroundColor: T.card,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: T.border,
-    padding: 16,
+    padding: 18,
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   gameLabel: {
     fontFamily: T.fontTitle,
-    fontSize: 16,
+    fontSize: 18,
     letterSpacing: 1,
   },
   pill: {
@@ -309,28 +221,27 @@ const styles = StyleSheet.create({
   },
   pillText: {
     fontFamily: T.fontBody,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
   },
   defiName: {
     fontFamily: T.fontTitle,
-    fontSize: 20,
+    fontSize: 24,
     color: T.text,
     letterSpacing: 1,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   defiCond: {
     fontFamily: T.fontBody,
-    fontSize: 13,
+    fontSize: 14,
     color: T.muted,
-    lineHeight: 20,
+    lineHeight: 22,
   },
-  // Infos joueur
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   infoBlock: {
     alignItems: 'center',
@@ -338,21 +249,20 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontFamily: T.fontBody,
-    fontSize: 10,
+    fontSize: 11,
     color: T.muted,
     marginBottom: 4,
   },
   infoValue: {
     fontFamily: T.fontMono,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: T.text,
   },
-  // Boutons
   buttonRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 20,
+    marginTop: 24,
     width: '100%',
   },
   resultButton: {
@@ -375,14 +285,5 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#fff',
     letterSpacing: 2,
-  },
-  // Note
-  note: {
-    fontFamily: T.fontBody,
-    fontSize: 11,
-    color: T.muted,
-    textAlign: 'center',
-    marginTop: 16,
-    opacity: 0.7,
   },
 });
