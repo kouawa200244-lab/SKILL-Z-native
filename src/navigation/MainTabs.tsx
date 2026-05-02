@@ -13,12 +13,11 @@ import ConfigScreen from '../screens/ConfigScreen';
 import LiveScreen from '../screens/LiveScreen';
 import ResultScreen from '../screens/ResultScreen';
 import WalletScreen from '../screens/WalletScreen';
-import HistoryScreen from '../screens/HistoryScreen';
-import GamingCategoriesScreen from '../screens/GamingCategoriesScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 
 const stackScreenOptions = { headerShown: false };
 
-// Stack Accueil
+// ── Stacks ──────────────────────────────────────────────────
 const HomeStack = createNativeStackNavigator();
 function HomeStackScreen() {
   return (
@@ -26,7 +25,6 @@ function HomeStackScreen() {
       <HomeStack.Screen name="Lobby" component={DashboardHomeScreen} />
       <HomeStack.Screen name="GameSelect" component={GamesScreen} />
       <HomeStack.Screen name="PhysicalCategory" component={PhysicalChallengesScreen} />
-      <HomeStack.Screen name="GamingCategories" component={GamingCategoriesScreen} />
       <HomeStack.Screen name="DefiSelect" component={DefiSelectScreen} />
       <HomeStack.Screen name="Config" component={ConfigScreen} />
       <HomeStack.Screen name="Live" component={LiveScreen} />
@@ -35,17 +33,6 @@ function HomeStackScreen() {
   );
 }
 
-// Stack Historique
-const HistoryStack = createNativeStackNavigator();
-function HistoryStackScreen() {
-  return (
-    <HistoryStack.Navigator screenOptions={stackScreenOptions}>
-      <HistoryStack.Screen name="HistoryMain" component={HistoryScreen} />
-    </HistoryStack.Navigator>
-  );
-}
-
-// Stack Wallet
 const WalletStack = createNativeStackNavigator();
 function WalletStackScreen() {
   return (
@@ -55,16 +42,25 @@ function WalletStackScreen() {
   );
 }
 
-// Stack Profil (placeholder)
+const HistoryStack = createNativeStackNavigator();
+function HistoryStackScreen() {
+  return (
+    <HistoryStack.Navigator screenOptions={stackScreenOptions}>
+      <HistoryStack.Screen name="HistoryMain" component={DashboardHomeScreen} />
+    </HistoryStack.Navigator>
+  );
+}
+
 const ProfileStack = createNativeStackNavigator();
 function ProfileStackScreen() {
   return (
     <ProfileStack.Navigator screenOptions={stackScreenOptions}>
-      <ProfileStack.Screen name="ProfileMain" component={WalletScreen} />
+      <ProfileStack.Screen name="ProfileMain" component={ProfileScreen} />
     </ProfileStack.Navigator>
   );
 }
 
+// ── Tab Navigator ───────────────────────────────────────────
 const Tab = createBottomTabNavigator();
 
 export default function MainTabs() {

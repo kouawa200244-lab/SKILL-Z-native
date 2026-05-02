@@ -1,149 +1,294 @@
 // @ts-nocheck
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import React, { useState, useRef } from 'react';
 import {
-  ArrowLeft,
-  Dumbbell,
-  Timer,
-  Smile,
-  Footprints,
-  Zap,
-  TrendingUp,
-  Shield,
-  User,
-  ChevronRight,
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, TextInput, Animated, StatusBar, Dimensions
+} from 'react-native';
+import {
+  Search, User, Dumbbell, Timer, Smile, Footprints,
+  Zap, TrendingUp, Shield, ChevronRight, Flame
 } from 'lucide-react-native';
 import { T } from '../utils/designTokens';
 import { DEFIS_PHYSIQUES } from '../constants/defisPhysiques';
 import { useNavigation } from '@react-navigation/native';
-import { useSession } from '../context/SessionContext';
-import ChallengeHistoryItem from '../components/ChallengeHistoryItem';
 
-// 8 catégories avec leurs icônes dédiées
-const PHYSICAL_CATEGORIES = [
-  { key: 'pompes',   label: 'POMPES',    icon: Dumbbell,   color: T.physique },
-  { key: 'squats',   label: 'SQUATS',    icon: TrendingUp, color: T.physique },
-  { key: 'planche',  label: 'PLANCHE',   icon: Shield,     color: T.physique },
-  { key: 'abdos',    label: 'ABDOS',     icon: Smile,      color: T.physique },
-  { key: 'burpees',  label: 'BURPEES',   icon: Zap,        color: T.physique },
-  { key: 'sprint',   label: 'SPRINT',    icon: Timer,      color: T.physique },
-  { key: 'saut',     label: 'SAUT',      icon: Footprints, color: T.physique },
-  { key: 'gainage',  label: 'GAINAGE',   icon: Shield,     color: T.physique },
+const { width: W } = Dimensions.get('window');
+
+const PHYSIQUE_META = {
+  pompes:   { icon: Dumbbell,    gradient: ['#7C2D12', '#431407'], label: 'POMPES',    sub: 'Force du haut du corps' },
+  squats:   { icon: TrendingUp,  gradient: ['#78350F', '#451A03'], label: 'SQUATS',    sub: 'Puissance des jambes' },
+  planche:  { icon: Shield,      gradient: ['#1E3A5F', '#0F1A2E'], label: 'PLANCHE',   sub: 'Gainage & stabilité' },
+  abdos:    { icon: Smile,       gradient: ['#713F12', '#3F1F06'], label: 'ABDOS',     sub: 'Sangle abdominale' },
+  burpees:  { icon: Zap,         gradient: ['#7C2D12', '#431407'], label: 'BURPEES',   sub: 'Explosivité & cardio' },
+  sprint:   { icon: Timer,       gradient: ['#14532D', '#052E16'], label: 'SPRINT',    sub: 'Vitesse pure' },
+  saut:     { icon: Footprints,  gradient: ['#1E3A5F', '#0F1A2E'], label: 'SAUT',      sub: 'Détente verticale' },
+  gainage:  { icon: Shield,      gradient: ['#713F12', '#3F1F06'], label: 'GAINAGE',   sub: 'Maintien postural' },
+};
+
+const FILTERS = [
+  { key: 'tous',     label: 'TOUS' },
+  { key: 'force',    label: 'FORCE' },
+  { key: 'cardio',   label: 'CARDIO' },
+  { key: 'abdominaux', label: 'ABDOS' },
+  { key: 'explosif', label: 'EXPLOSIF' },
 ];
-
-function CategoryCard({ category, onPress }) {
-  const Icon = category.icon;
-  const count = DEFIS_PHYSIQUES[category.key]?.length || 0;
-
-  return (
-    <Pressable
-      onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        onPress();
-      }}
-      style={styles.categoryCard}
-    >
-      <LinearGradient
-        colors={['rgba(255,107,0,0.12)', 'transparent']}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={styles.categoryGradient}
-      />
-      <View style={styles.categoryContent}>
-        <View style={[styles.categoryIcon, { backgroundColor: '#1a1a1a' }]}>
-          <Icon size={28} color={T.physique} />
-        </View>
-        <View style={styles.categoryTextBlock}>
-          <Text style={styles.categoryTitle}>{category.label}</Text>
-          <Text style={styles.categorySubtitle}>{count} exercices disponibles</Text>
-        </View>
-        <ChevronRight size={18} color={T.physique} />
-      </View>
-    </Pressable>
-  );
-}
 
 export default function PhysicalChallengesScreen() {
   const navigation = useNavigation();
-  const { history } = useSession();
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('tous');
+  const searchAnim = useRef(new Animated.Value(0)).current;
 
-  const physicalHistory = history.filter(
-    h => h.mode !== 'duo' && h.game === 'physique',
-  );
+  const categories = Object.keys(PHYSIQUE_META).map(key => ({
+    key,
+    ...PHYSIQUE_META[key],
+    count: (DEFIS_PHYSIQUES[key] || []).length,
+  }));
 
-  // Navigation vers DefiSelect avec la catégorie
-  const goToDefiSelect = (categoryKey) => {
-    navigation.navigate('DefiSelect', {
-      gameKey: 'physique',
-      category: categoryKey,
-    });
+  const filtered = categories.filter(cat => {
+    const matchSearch = cat.label.toLowerCase().includes(search.toLowerCase());
+    const matchFilter = filter === 'tous' || cat.key === filter;
+    return matchSearch && matchFilter;
+  });
+
+  const onSearchFocus = () => {
+    Animated.spring(searchAnim, { toValue: 1, useNativeDriver: false }).start();
   };
+  const onSearchBlur = () => {
+    Animated.spring(searchAnim, { toValue: 0, useNativeDriver: false }).start();
+  };
+
+  const searchBorder = searchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(255,255,255,0.08)', T.physique],
+  });
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ArrowLeft size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>DÉFIS PHYSIQUES</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('ProfileTab')}>
-          <View style={styles.avatar}>
-            <User size={22} color={T.gold} />
+      <StatusBar barStyle="light-content" />
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerEyebrow}>SKILL'Z</Text>
+            <Text style={styles.headerTitle}>Physique</Text>
           </View>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity style={styles.avatarBtn}>
+            <User size={20} color={T.gold} />
+          </TouchableOpacity>
+        </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionLabel}>CATÉGORIES D'EXERCICES</Text>
-        {PHYSICAL_CATEGORIES.map((cat) => (
-          <CategoryCard
-            key={cat.key}
-            category={cat}
-            onPress={() => goToDefiSelect(cat.key)}
+        {/* Barre de recherche */}
+        <Animated.View style={[styles.searchBox, { borderColor: searchBorder }]}>
+          <Search size={16} color={T.muted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher un exercice..."
+            placeholderTextColor={T.muted}
+            value={search}
+            onChangeText={setSearch}
+            onFocus={onSearchFocus}
+            onBlur={onSearchBlur}
           />
-        ))}
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Text style={{ color: T.muted, fontSize: 16 }}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </Animated.View>
 
-        {physicalHistory.length > 0 && (
-          <View style={styles.historySection}>
-            <Text style={styles.sectionLabel}>HISTORIQUE DES PERFORMANCES</Text>
-            {physicalHistory.map((h, index) => (
-              <ChallengeHistoryItem key={h.id} item={h} index={index} type="physique" />
-            ))}
+        {/* Filtres */}
+        <View style={styles.filtersBlock}>
+          <Text style={styles.filtersLabel}>FILTRER PAR :</Text>
+          <View style={styles.filtersRow}>
+            {FILTERS.map(f => {
+              const active = filter === f.key;
+              return (
+                <TouchableOpacity
+                  key={f.key}
+                  onPress={() => setFilter(f.key)}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.filterChip,
+                    active && styles.filterChipActive,
+                  ]}
+                >
+                  <Dumbbell size={11} color={active ? '#000' : T.muted} />
+                  <Text style={[styles.filterText, active && styles.filterTextActive]}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Compteur */}
+        <Text style={styles.countLabel}>
+          {filtered.length} catégorie{filtered.length > 1 ? 's' : ''}
+        </Text>
+
+        {/* Liste */}
+        {filtered.map((cat, i) => {
+          const Icon = cat.icon || Dumbbell;
+          const isHot = cat.count >= 12;
+
+          return (
+            <TouchableOpacity
+              key={cat.key}
+              style={styles.card}
+              onPress={() => navigation.navigate('DefiSelect', { gameKey: 'physique', category: cat.key })}
+              activeOpacity={0.8}
+            >
+              {/* Icône avec fond coloré */}
+              <View style={[styles.iconBox, { backgroundColor: cat.gradient?.[0] || '#1A1D23' }]}>
+                <Icon size={22} color={T.physique} />
+              </View>
+
+              {/* Texte */}
+              <View style={styles.cardContent}>
+                <View style={styles.cardTitleRow}>
+                  <Text style={styles.cardTitle}>{cat.label}</Text>
+                  {isHot && (
+                    <View style={styles.hotBadge}>
+                      <Flame size={9} color="#FF6B00" />
+                      <Text style={styles.hotText}>HOT</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.cardSub}>{cat.sub}</Text>
+              </View>
+
+              {/* Défis count + chevron */}
+              <View style={styles.cardRight}>
+                <Text style={[styles.defiCount, { color: T.physique }]}>
+                  {cat.count} DÉFIS
+                </Text>
+                <ChevronRight size={16} color="rgba(255,255,255,0.2)" />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+
+        {filtered.length === 0 && (
+          <View style={styles.empty}>
+            <Text style={styles.emptyIcon}>🔍</Text>
+            <Text style={styles.emptyText}>Aucun résultat pour "{search}"</Text>
           </View>
         )}
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#050505' },
+  screen: { flex: 1, backgroundColor: '#080A0F' },
+  scrollContent: { paddingTop: 60, paddingBottom: 120, paddingHorizontal: 18 },
+
+  /* Header */
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 60, paddingBottom: 14,
-    backgroundColor: '#050505', borderBottomWidth: 1, borderBottomColor: '#222',
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'flex-end', marginBottom: 24,
   },
-  headerTitle: { fontFamily: T.fontTitle, fontSize: 22, color: '#fff', letterSpacing: 2 },
-  avatar: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: '#121212',
-    borderWidth: 1, borderColor: '#222', justifyContent: 'center', alignItems: 'center',
+  headerLeft: {},
+  headerEyebrow: {
+    fontFamily: 'Inter-Regular', fontSize: 10, color: T.gold,
+    fontWeight: '800', letterSpacing: 3, marginBottom: 2,
   },
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 100, marginTop: 20 },
-  sectionLabel: { fontFamily: T.fontBody, fontSize: 13, color: '#666', letterSpacing: 1.5, marginBottom: 12, marginTop: 10 },
-  categoryCard: {
-    width: '100%', height: 90, backgroundColor: '#121212', borderRadius: 20,
-    borderWidth: 1, borderColor: '#222', marginBottom: 12, overflow: 'hidden', position: 'relative',
+  headerTitle: {
+    fontFamily: 'Rajdhani-Bold', fontSize: 38, color: '#EEEEF5',
+    letterSpacing: 1, lineHeight: 40,
   },
-  categoryGradient: { ...StyleSheet.absoluteFillObject, borderRadius: 20 },
-  categoryContent: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, height: '100%' },
-  categoryIcon: {
-    width: 48, height: 48, borderRadius: 16, backgroundColor: '#1a1a1a',
-    justifyContent: 'center', alignItems: 'center', marginRight: 14,
+  avatarBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: T.gold + '15', borderWidth: 1.5,
+    borderColor: T.gold + '40', justifyContent: 'center', alignItems: 'center',
   },
-  categoryTextBlock: { flex: 1 },
-  categoryTitle: { fontFamily: T.fontTitle, fontSize: 20, color: '#fff', fontWeight: '600', marginBottom: 4 },
-  categorySubtitle: { fontFamily: T.fontBody, fontSize: 13, color: '#666' },
-  historySection: { marginTop: 24 },
+
+  /* Recherche */
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#0F1219', borderRadius: 14, borderWidth: 1,
+    paddingHorizontal: 16, paddingVertical: 13, marginBottom: 22,
+  },
+  searchInput: {
+    flex: 1, fontFamily: 'Inter-Regular', fontSize: 14,
+    color: '#EEEEF5', padding: 0,
+  },
+
+  /* Filtres */
+  filtersBlock: { marginBottom: 20 },
+  filtersLabel: {
+    fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted,
+    fontWeight: '700', letterSpacing: 2, marginBottom: 10,
+  },
+  filtersRow: { flexDirection: 'row', gap: 8 },
+  filterChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 16, paddingVertical: 9,
+    borderRadius: 24, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  filterChipActive: {
+    backgroundColor: T.physique, borderColor: T.physique,
+  },
+  filterText: {
+    fontFamily: 'Inter-Regular', fontSize: 11, fontWeight: '700',
+    color: T.muted, letterSpacing: 0.5,
+  },
+  filterTextActive: { color: '#000' },
+
+  /* Compteur */
+  countLabel: {
+    fontFamily: 'Inter-Regular', fontSize: 11, color: T.muted,
+    letterSpacing: 0.5, marginBottom: 14,
+  },
+
+  /* Cards */
+  card: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#0F1219', borderRadius: 16,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+    padding: 14, marginBottom: 10, gap: 14,
+  },
+  iconBox: {
+    width: 52, height: 52, borderRadius: 14,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  cardContent: { flex: 1 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  cardTitle: {
+    fontFamily: 'Rajdhani-Bold', fontSize: 17, color: '#EEEEF5', letterSpacing: 0.5,
+  },
+  cardSub: {
+    fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted,
+  },
+  cardRight: { alignItems: 'flex-end', gap: 4 },
+  defiCount: {
+    fontFamily: 'Inter-Regular', fontSize: 11, fontWeight: '800', letterSpacing: 0.5,
+  },
+
+  /* Hot badge */
+  hotBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#FF6B0015', borderWidth: 1,
+    borderColor: '#FF6B0040', borderRadius: 5,
+    paddingHorizontal: 6, paddingVertical: 2,
+  },
+  hotText: {
+    fontFamily: 'Inter-Regular', fontSize: 8, fontWeight: '800',
+    color: '#FF6B00', letterSpacing: 1,
+  },
+
+  /* Empty */
+  empty: { alignItems: 'center', paddingVertical: 60 },
+  emptyIcon: { fontSize: 40, marginBottom: 12 },
+  emptyText: { fontFamily: 'Inter-Regular', fontSize: 14, color: T.muted },
 });

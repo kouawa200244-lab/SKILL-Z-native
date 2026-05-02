@@ -1,5 +1,8 @@
 // src/constants/defis.js
-
+import {
+  DEFIS_BLUR, DEFIS_NARUTO3, DEFIS_NARUTO4,
+  DEFIS_FIGHTERZ, DEFIS_MK, DEFIS_UFC, DEFIS_TEKKEN,
+} from './defisGaming';
 export const DEFIS = {
   pes: [
     { id: "p1",  p: "debutant",      nom: "Victoire nette",        cond: "Gagner un match en difficulté 1★",                      taux: 80, cote: 1.10 },
@@ -92,4 +95,11 @@ export const DEFIS = {
     { id: "phy15", p: "legendaire",    nom: "300 Squats",        cond: "Faire 300 squats en moins de 10 minutes",              taux: 5,  cote: 7.00 },
     { id: "phy16", p: "legendaire",    nom: "Planche 5min",      cond: "Tenir la planche 5 minutes sans bouger",               taux: 6,  cote: 7.00 },
   ],
+   blur:     DEFIS_BLUR,
+  naruto3:  DEFIS_NARUTO3,
+  naruto4:  DEFIS_NARUTO4,
+  fighterz: DEFIS_FIGHTERZ,
+  mk:       DEFIS_MK,
+  ufc:      DEFIS_UFC,
+  tekken:   DEFIS_TEKKEN,
 };

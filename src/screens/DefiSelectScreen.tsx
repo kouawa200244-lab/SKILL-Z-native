@@ -1,237 +1,287 @@
 // @ts-nocheck
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Animated } from 'react-native';
-import { Gamepad2, Dumbbell, Zap, Skull } from 'lucide-react-native';
+import React, { useState, useRef } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  Animated, Dimensions, StatusBar,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ArrowLeft, Zap, Shield, Target, Clock, Star } from 'lucide-react-native';
 import { GAMES } from '../constants/games';
 import { PALIERS } from '../constants/paliers';
 import { DEFIS } from '../constants/defis';
-import { DEFIS_PHYSIQUES, ALL_DEFIS_PHYSIQUES } from '../constants/defisPhysiques';
 import { T } from '../utils/designTokens';
 import { coteCol } from '../utils/helpers';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// ─── CARTE STEALTH OBSIDIAN ──────────────────────────────────────────────────
-function DefiCard({ defi, onPress, isPhysique }) {
-  const pc = PALIERS[defi.p] || {};
-  const difficultyColor = pc.color || T.gold;
-  const isHard = defi.p === 'avance' || defi.p === 'expert' || defi.p === 'legendaire';
+const { width: W } = Dimensions.get('window');
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.15, duration: 600, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
-  }, []);
+const PALIER_ICONS = {
+  debutant: Star,
+  intermediaire: Target,
+  avance: Zap,
+  expert: Shield,
+  legendaire: Clock,
+};
 
-  // Couleur de rappel : cote cyan pour physique, orange pour gaming
-  const coteColor = isPhysique ? T.gaming : T.physique;
-
-  // Dégradé de fond de la carte (stealth)
-  const cardGradient = isPhysique
-    ? ['#FF6B0008', '#0A0A0A']
-    : ['#00F0FF08', '#0A0A0A'];
-
-  // Icône de catégorie
-  const CategoryIcon = isPhysique ? Dumbbell : Gamepad2;
-
-  return (
-    <TouchableOpacity
-      style={styles.obsidianCard}
-      onPress={onPress}
-      activeOpacity={0.9}
-    >
-      {/* Fond sombre + lueur intérieure */}
-      <LinearGradient
-        colors={cardGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      {/* Lueur subtile sur la bordure supérieure */}
-      <View style={[styles.topGlow, { backgroundColor: isPhysique ? T.physique : T.gaming }]} />
-
-      {/* Image masquée progressivement (à gauche) */}
-      <View style={styles.imageMask}>
-        <LinearGradient
-          colors={[isPhysique ? T.physique : T.gaming, 'transparent']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFillObject}
-        />
-        <CategoryIcon size={64} color="#ffffff20" style={{ position: 'absolute', left: 10, top: 10 }} />
-      </View>
-
-      <View style={styles.cardContent}>
-        {/* Icône de catégorie en contour */}
-        <CategoryIcon size={18} color={isPhysique ? T.physique : T.gaming} style={{ marginBottom: 8, opacity: 0.7 }} />
-
-        {/* Titre (en majuscules si difficile) */}
-        <Text style={[styles.defiName, isHard && { textTransform: 'uppercase', letterSpacing: 2 }]}>
-          {defi.nom}
-        </Text>
-        <Text style={styles.defiCond}>{defi.cond}</Text>
-
-        {/* Badge de difficulté : point LED + nom du palier */}
-        <View style={styles.difficultyRow}>
-          <View style={[styles.led, { backgroundColor: difficultyColor, shadowColor: difficultyColor }]} />
-          <Text style={[styles.difficultyLabel, { color: difficultyColor }]}>{pc.label?.toUpperCase()}</Text>
-        </View>
-
-        {/* Cote animée */}
-        <Animated.View style={[styles.coteContainer, { transform: [{ scale: pulseAnim }], borderColor: coteColor + '40' }]}>
-          <Zap size={14} color={coteColor} style={{ marginBottom: 2 }} />
-          <Text style={[styles.coteText, { color: coteColor, textShadowColor: coteColor + '60' }]}>
-            ×{defi.cote.toFixed(2)}
-          </Text>
-        </Animated.View>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-// ─── ÉCRAN PRINCIPAL ──────────────────────────────────────────────────────────
 export default function DefiSelectScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const gameKey = route.params?.gameKey || 'fifa';
-  const category = route.params?.category;
-  const insets = useSafeAreaInsets();
+  const [palier, setPalier] = useState('tous');
+  const scrollY = useRef(new Animated.Value(0)).current;
 
-  const isPhysique = gameKey === 'physique';
   const g = GAMES[gameKey];
-  const Icon = isPhysique ? Dumbbell : Gamepad2;
-  const accentColor = isPhysique ? T.physique : g.color;
+  const allDefis = DEFIS[gameKey] || [];
+  const shown = palier === 'tous' ? allDefis : allDefis.filter(d => d.p === palier);
 
-  const allDefis = isPhysique
-    ? (category ? DEFIS_PHYSIQUES[category] || [] : ALL_DEFIS_PHYSIQUES)
-    : DEFIS[gameKey] || [];
-
-  const renderDefi = ({ item }) => (
-    <DefiCard
-      defi={item}
-      isPhysique={isPhysique}
-      onPress={() => navigation.navigate('Config', { gameKey, defi: item })}
-    />
-  );
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 80],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.titleRow, { marginTop: insets.top + 20 }]}>
-        <Icon size={28} color={accentColor} style={{ marginRight: 10 }} />
-        <Text style={[styles.titleText, { color: accentColor }]}>
-          {isPhysique ? 'DÉFIS PHYSIQUES' : g.label} — CHOISIR LE DÉFI
-        </Text>
-      </View>
+      <StatusBar barStyle="light-content" />
 
-      <FlatList
-        data={allDefis}
-        renderItem={renderDefi}
-        keyExtractor={(d) => d.id}
-        contentContainerStyle={styles.listContainer}
+      {/* Sticky header blur simulé */}
+      <Animated.View style={[styles.stickyHeader, { opacity: headerOpacity }]}>
+        <Text style={[styles.stickyTitle, { color: g?.color || T.gold }]}>
+          {g?.short || gameKey.toUpperCase()}
+        </Text>
+      </Animated.View>
+
+      <Animated.ScrollView
+        contentContainerStyle={styles.scrollContent}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
-      />
+      >
+        {/* Back */}
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <ArrowLeft size={18} color={T.muted} />
+          <Text style={styles.backText}>Retour</Text>
+        </TouchableOpacity>
+
+        {/* Hero Header */}
+        <View style={styles.hero}>
+          <View style={[styles.heroBadge, { backgroundColor: (g?.color || T.gold) + '15', borderColor: (g?.color || T.gold) + '30' }]}>
+            <Text style={[styles.heroBadgeText, { color: g?.color || T.gold }]}>
+              {allDefis.length} DÉFIS
+            </Text>
+          </View>
+          <Text style={styles.heroTitle}>
+            {g?.label || gameKey}
+          </Text>
+          <View style={[styles.heroLine, { backgroundColor: g?.color || T.gold }]} />
+          <Text style={styles.heroSub}>Choisis ton niveau de défi</Text>
+        </View>
+
+        {/* Filtres palier */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll} contentContainerStyle={styles.filtersContent}>
+          {['tous', ...Object.keys(PALIERS)].map(p => {
+            const cfg = p === 'tous' ? { label: 'Tous', color: T.gold } : PALIERS[p];
+            const active = palier === p;
+            const Icon = p !== 'tous' ? PALIER_ICONS[p] : Star;
+            return (
+              <TouchableOpacity
+                key={p}
+                onPress={() => setPalier(p)}
+                style={[
+                  styles.filterChip,
+                  active && { backgroundColor: cfg.color + '20', borderColor: cfg.color },
+                ]}
+                activeOpacity={0.7}
+              >
+                <Icon size={11} color={active ? cfg.color : T.muted} />
+                <Text style={[styles.filterText, active && { color: cfg.color }]}>
+                  {cfg.label.toUpperCase()}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Compteur */}
+        <Text style={styles.countText}>
+          {shown.length} défi{shown.length > 1 ? 's' : ''} disponible{shown.length > 1 ? 's' : ''}
+        </Text>
+
+        {/* Cartes */}
+        {shown.map((d, index) => {
+          const pc = PALIERS[d.p] || {};
+          const col = coteCol(d.cote);
+          const isHigh = d.cote >= 3;
+
+          return (
+            <TouchableOpacity
+              key={d.id}
+              onPress={() => navigation.navigate('Config', { gameKey, defi: d })}
+              activeOpacity={0.85}
+              style={styles.cardWrapper}
+            >
+              {/* Glow border effect pour les hautes cotes */}
+              {isHigh && (
+                <View style={[styles.cardGlow, { shadowColor: col }]} />
+              )}
+
+              <View style={[styles.card, isHigh && { borderColor: col + '40' }]}>
+                {/* Top accent line */}
+                <View style={[styles.cardAccent, { backgroundColor: pc.color || T.gold }]} />
+
+                <View style={styles.cardInner}>
+                  {/* Left content */}
+                  <View style={styles.cardLeft}>
+                    {/* Palier badge */}
+                    <View style={[styles.palierBadge, { backgroundColor: pc.dim || '#111', borderColor: (pc.color || T.gold) + '40' }]}>
+                      <View style={[styles.palierDot, { backgroundColor: pc.color || T.gold }]} />
+                      <Text style={[styles.palierLabel, { color: pc.color || T.gold }]}>
+                        {pc.label?.toUpperCase()}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.defiNom}>{d.nom}</Text>
+                    <Text style={styles.defiCond} numberOfLines={2}>{d.cond}</Text>
+
+                    {/* Taux réussite */}
+                    <View style={styles.tauxRow}>
+                      <View style={styles.tauxBar}>
+                        <View style={[styles.tauxFill, { width: `${d.taux}%`, backgroundColor: pc.color || T.gold }]} />
+                      </View>
+                      <Text style={styles.tauxLabel}>{d.taux}%</Text>
+                    </View>
+                  </View>
+
+                  {/* Right — Cote */}
+                  <View style={[styles.coteBubble, { borderColor: col + '50', backgroundColor: col + '08' }]}>
+                    <Zap size={14} color={col} style={{ marginBottom: 2 }} />
+                    <Text style={[styles.coteValue, { color: col }]}>
+                      ×{d.cote.toFixed(2)}
+                    </Text>
+                    {isHigh && (
+                      <Text style={[styles.coteHot, { color: col }]}>HOT</Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+
+        {shown.length === 0 && (
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>Aucun défi pour ce palier</Text>
+          </View>
+        )}
+
+        <View style={{ height: 40 }} />
+      </Animated.ScrollView>
     </View>
   );
 }
 
-// ─── STYLES ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#050505' },
-  titleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 },
-  titleText: { fontFamily: T.fontTitle, fontSize: 20, letterSpacing: 2, flex: 1 },
-  listContainer: { paddingHorizontal: 16, paddingBottom: 100 },
-  obsidianCard: {
-    width: '100%',
-    height: 180,
-    backgroundColor: '#0A0A0A',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#1A1A1A',
-    marginBottom: 16,
+  screen: { flex: 1, backgroundColor: '#080A0F' },
+
+  stickyHeader: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 99,
+    height: 56, backgroundColor: 'rgba(8,10,15,0.95)',
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  stickyTitle: { fontFamily: 'Rajdhani-Bold', fontSize: 16, letterSpacing: 3 },
+
+  scrollContent: { paddingTop: 56, paddingBottom: 120, paddingHorizontal: 18 },
+
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 28, paddingTop: 4 },
+  backText: { fontFamily: 'Inter-Regular', fontSize: 13, color: T.muted },
+
+  /* Hero */
+  hero: { marginBottom: 28 },
+  heroBadge: {
+    alignSelf: 'flex-start', borderWidth: 1, borderRadius: 6,
+    paddingHorizontal: 10, paddingVertical: 4, marginBottom: 10,
+  },
+  heroBadgeText: { fontFamily: 'Inter-Regular', fontSize: 11, fontWeight: '700', letterSpacing: 2 },
+  heroTitle: {
+    fontFamily: 'Rajdhani-Bold', fontSize: 36, color: '#EEEEF5',
+    letterSpacing: 1, lineHeight: 40, marginBottom: 10,
+  },
+  heroLine: { width: 40, height: 3, borderRadius: 2, marginBottom: 10 },
+  heroSub: { fontFamily: 'Inter-Regular', fontSize: 13, color: T.muted },
+
+  /* Filtres */
+  filtersScroll: { marginBottom: 8 },
+  filtersContent: { gap: 8, paddingBottom: 4 },
+  filterChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  filterText: { fontFamily: 'Inter-Regular', fontSize: 10, fontWeight: '700', color: T.muted, letterSpacing: 1 },
+
+  countText: {
+    fontFamily: 'Inter-Regular', fontSize: 11, color: T.muted,
+    letterSpacing: 0.5, marginBottom: 16, marginTop: 8,
+  },
+
+  /* Cartes */
+  cardWrapper: { marginBottom: 12, position: 'relative' },
+  cardGlow: {
+    position: 'absolute', inset: 0, borderRadius: 16,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 16,
+    elevation: 8,
+  },
+  card: {
+    backgroundColor: '#0F1219',
+    borderRadius: 16, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
     overflow: 'hidden',
-    position: 'relative',
   },
-  topGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    opacity: 0.3,
+  cardAccent: { height: 2, width: '100%' },
+  cardInner: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 18, gap: 14,
   },
-  imageMask: {
-    width: '40%',
-    height: '100%',
-    position: 'absolute',
-    left: 0,
-    top: 0,
+  cardLeft: { flex: 1 },
+
+  palierBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    alignSelf: 'flex-start', borderWidth: 1, borderRadius: 5,
+    paddingHorizontal: 8, paddingVertical: 3, marginBottom: 10,
   },
-  cardContent: {
-    flex: 1,
-    padding: 20,
-    position: 'relative',
-    zIndex: 1,
-  },
-  defiName: {
-    fontFamily: T.fontTitle,
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 6,
+  palierDot: { width: 5, height: 5, borderRadius: 3 },
+  palierLabel: { fontFamily: 'Inter-Regular', fontSize: 9, fontWeight: '800', letterSpacing: 1.5 },
+
+  defiNom: {
+    fontFamily: 'Rajdhani-Bold', fontSize: 20, color: '#E8E8EE',
+    letterSpacing: 0.5, marginBottom: 5,
   },
   defiCond: {
-    fontFamily: T.fontBody,
-    fontSize: 13,
-    color: '#999',
-    lineHeight: 20,
-    marginBottom: 12,
+    fontFamily: 'Inter-Regular', fontSize: 12, color: '#5A5A6B',
+    lineHeight: 18, marginBottom: 14,
   },
-  difficultyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+
+  tauxRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tauxBar: {
+    flex: 1, height: 3, backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 2, overflow: 'hidden',
   },
-  led: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 6,
-    elevation: 4,
+  tauxFill: { height: '100%', borderRadius: 2 },
+  tauxLabel: { fontFamily: 'JetBrainsMono-Regular', fontSize: 10, color: T.muted },
+
+  /* Cote */
+  coteBubble: {
+    width: 72, height: 72, borderRadius: 14, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
   },
-  difficultyLabel: {
-    fontFamily: T.fontBody,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  coteContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    position: 'absolute',
-    right: 16,
-    bottom: 16,
-    borderWidth: 1,
-  },
-  coteText: {
-    fontFamily: T.fontMono,
-    fontSize: 20,
-    fontWeight: '800',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-    marginTop: 2,
-  },
+  coteValue: { fontFamily: 'JetBrainsMono-Regular', fontSize: 17, fontWeight: '700' },
+  coteHot: { fontFamily: 'Inter-Regular', fontSize: 8, fontWeight: '800', letterSpacing: 1.5, marginTop: 2 },
+
+  empty: { alignItems: 'center', paddingVertical: 60 },
+  emptyText: { fontFamily: 'Inter-Regular', fontSize: 14, color: T.muted },
 });

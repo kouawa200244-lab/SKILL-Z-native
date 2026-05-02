@@ -6,4 +6,11 @@ export const GAMES = {
   nba:  { label: "NBA 2K",          short: "NBA",  color: "#F97316", accent: "#c2410c" },
   nfs:  { label: "Need for Speed",  short: "NFS",  color: "#FACC15", accent: "#a16207" },
   physique: { label: "Défis Physiques", short: "PHYSIQUE", color: "#FF6B00", accent: "#cc5500" },
+  blur: { label: "Blur", short: "BLUR", color: "#8B5CF6", accent: "#7c3aed" },
+  naruto3: { label: "Naruto Ultimate Ninja Storm 3", short: "NARUTO 3", color: "#EC4899", accent: "#db2777" },
+  naruto4: { label: "Naruto Ultimate Ninja Storm 4", short: "NARUTO 4", color: "#EC4899", accent: "#db2777" },
+  fighterz: { label: "Dragon Ball FighterZ", short: "FIGHTERZ", color: "#EC4899", accent: "#db2777" },
+  mk: { label: "Mortal Kombat", short: "MK", color: "#EC4899", accent: "#db2777" },
+  ufc: { label: "EA Sports UFC", short: "UFC", color: "#EC4899", accent: "#db2777" },
+  tekken: { label: "Tekken", short: "TEKKEN", color: "#EC4899", accent: "#db2777" }
 };
