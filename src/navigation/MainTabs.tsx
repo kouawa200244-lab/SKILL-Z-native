@@ -5,7 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import CustomTabBar from '../components/CustomTabBar';
 
 // Écrans
-import DashboardHomeScreen from '../screens/DashboardHomeScreen';
+import LobbyScreen from '../screens/LobbyScreen';
 import GamesScreen from '../screens/GamesScreen';
 import PhysicalChallengesScreen from '../screens/PhysicalChallengesScreen';
 import DefiSelectScreen from '../screens/DefiSelectScreen';
@@ -14,6 +14,7 @@ import LiveScreen from '../screens/LiveScreen';
 import ResultScreen from '../screens/ResultScreen';
 import WalletScreen from '../screens/WalletScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import HistoryScreen from '../screens/HistoryScreen';
 
 const stackScreenOptions = { headerShown: false };
 
@@ -22,13 +23,14 @@ const HomeStack = createNativeStackNavigator();
 function HomeStackScreen() {
   return (
     <HomeStack.Navigator screenOptions={stackScreenOptions}>
-      <HomeStack.Screen name="Lobby" component={DashboardHomeScreen} />
+      <HomeStack.Screen name="Lobby" component={LobbyScreen} />
       <HomeStack.Screen name="GameSelect" component={GamesScreen} />
       <HomeStack.Screen name="PhysicalCategory" component={PhysicalChallengesScreen} />
       <HomeStack.Screen name="DefiSelect" component={DefiSelectScreen} />
       <HomeStack.Screen name="Config" component={ConfigScreen} />
       <HomeStack.Screen name="Live" component={LiveScreen} />
       <HomeStack.Screen name="Result" component={ResultScreen} />
+      <HomeStack.Screen name="History" component={HistoryScreen} />
     </HomeStack.Navigator>
   );
 }
@@ -46,7 +48,7 @@ const HistoryStack = createNativeStackNavigator();
 function HistoryStackScreen() {
   return (
     <HistoryStack.Navigator screenOptions={stackScreenOptions}>
-      <HistoryStack.Screen name="HistoryMain" component={DashboardHomeScreen} />
+      <HistoryStack.Screen name="HistoryMain" component={HistoryScreen} />
     </HistoryStack.Navigator>
   );
 }
