@@ -45,6 +45,16 @@ function CustomSlider({ value, onValueChange, min, max, color }) {
     outputRange: [0, SLIDER_W],
   });
 
+  const handleSubmit = () => {
+  if (!ok) return;
+  addToQueue({ player: player.trim(), mise, gameKey, defi });
+  
+  // Petit délai pour que le state soit mis à jour avant la navigation
+  setTimeout(() => {
+    navigation.navigate('HomeTab', { screen: 'Lobby' });
+  }, 100);
+};
+
   const thumbLeft = fillAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, SLIDER_W - 20],

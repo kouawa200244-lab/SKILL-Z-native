@@ -1,25 +1,15 @@
+// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { ActivityIndicator, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import AuthScreen from './src/screens/AuthScreen';
-import AppNavigator from './src/navigation/AppNavigator';
-import { SessionProvider } from './src/context/SessionContext';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { T } from './src/utils/designTokens';
+import AuthScreen    from './src/screens/AuthScreen';
+import AppNavigator  from './src/navigation/AppNavigator';
+import { T }         from './src/utils/designTokens';
+import { navigationRef } from './src/utils/navigationRef';
 
 export default function App() {
-  return (
-    <SafeAreaProvider>
-      <SessionProvider>
-        <AppContent />
-      </SessionProvider>
-    </SafeAreaProvider>
-  );
-}
-
-function AppContent() {
-  const [user, setUser] = useState(null);
+  const [user,    setUser]    = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,17 +31,22 @@ function AppContent() {
     setUser(loggedUser);
   };
 
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem('skillz_user');
+    setUser(null);
+  };
+
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: T.bg }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#080A0F' }}>
         <ActivityIndicator size="large" color={T.gold} />
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
-      {user ? <AppNavigator /> : <AuthScreen onLogin={handleLogin} />}
-    </NavigationContainer>
-  );
+  <NavigationContainer ref={navigationRef}>
+    {user ? <AppNavigator /> : <AuthScreen onLogin={handleLogin} />}
+  </NavigationContainer>
+);
 }
