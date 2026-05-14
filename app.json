@@ -28,7 +28,9 @@
       "package": "com.skillz.app",
       "permissions": [
         "CAMERA",
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -45,8 +47,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "your-eas-project-id"
+        "projectId": "07329084-6e89-4410-b2fa-a7e13d4f4184"
       }
-    }
+    },
+    "owner": "braelblack"
   }
 }

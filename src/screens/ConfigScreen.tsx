@@ -1,404 +1,700 @@
 // @ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Alert,
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, Animated, TextInput, PanResponder,
+  Dimensions, Alert, ActivityIndicator, StatusBar,
 } from 'react-native';
-import { ArrowLeft, Zap, Shield, Clock } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import {
+  ArrowLeft, HelpCircle, Clock, Shield,
+  TrendingUp, Zap, Plus, Layers,
+} from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { T } from '../utils/designTokens';
+import { fmt } from '../utils/helpers';
 import { GAMES } from '../constants/games';
 import { PALIERS } from '../constants/paliers';
-import { T } from '../utils/designTokens';
-import { fmt, filet as calcFilet } from '../utils/helpers';
+import { coteCol } from '../utils/helpers';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useSession } from '../context/SessionContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export default function ConfigScreen() {
-  const navigation = useNavigation();
-  const route = useRoute();
-  const { addToQueue } = useSession();
+const { width: W } = Dimensions.get('window');
 
-  const gameKey = route.params?.gameKey || 'fifa';
-  const defi = route.params?.defi;
-  const user = route.params?.user || { user_metadata: { name: 'Joueur' } };
+const MISE_MIN = 200;
+const MISE_MAX = 20000;
+const SLIDER_W = W - 48;
 
-  const [mise, setMise] = useState(1000);
-  const [miseError, setMiseError] = useState('');
-  const inputRef = useRef(null);
+/* ══════════════════════════════════════
+   SLIDER CUSTOM
+══════════════════════════════════════ */
+function CustomSlider({ value, onValueChange, min, max, color }) {
+  const sliderRef  = useRef(null);
+  const fillAnim   = useRef(new Animated.Value((value - min) / (max - min))).current;
+  const thumbScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      inputRef.current?.focus();
-    }, 300);
-    return () => clearTimeout(timer);
+    Animated.spring(fillAnim, {
+      toValue: (value - min) / (max - min),
+      tension: 80, friction: 8, useNativeDriver: false,
+    }).start();
+  }, [value]);
+
+  const fillWidth = fillAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, SLIDER_W],
+  });
+
+  const thumbLeft = fillAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, SLIDER_W - 20],
+  });
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder:  () => true,
+      onPanResponderGrant: () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        Animated.spring(thumbScale, { toValue: 1.3, tension: 200, useNativeDriver: true }).start();
+      },
+      onPanResponderMove: (_, gesture) => {
+        const ratio   = Math.max(0, Math.min(1, gesture.moveX / SLIDER_W));
+        const newVal  = Math.round((min + ratio * (max - min)) / 100) * 100;
+        onValueChange(Math.max(min, Math.min(max, newVal)));
+      },
+      onPanResponderRelease: () => {
+        Haptics.selectionAsync();
+        Animated.spring(thumbScale, { toValue: 1, tension: 200, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
+
+  return (
+    <View style={{ paddingHorizontal: 0, marginBottom: 6 }}>
+      <View
+        style={[styles.sliderTrack]}
+        {...panResponder.panHandlers}
+      >
+        {/* Track fond */}
+        <View style={styles.sliderTrackBg} />
+        {/* Fill */}
+        <Animated.View style={[styles.sliderFill, { width: fillWidth, backgroundColor: color }]} />
+        {/* Thumb */}
+        <Animated.View style={[
+          styles.sliderThumb,
+          {
+            left: thumbLeft,
+            borderColor: color,
+            transform: [{ scale: thumbScale }],
+            shadowColor: color,
+          }
+        ]} />
+      </View>
+    </View>
+  );
+}
+
+/* ══════════════════════════════════════
+   CONFIG SCREEN
+══════════════════════════════════════ */
+export default function ConfigScreen() {
+  const navigation = useNavigation();
+  const route      = useRoute();
+  const insets     = useSafeAreaInsets();
+  const { gameKey, defi } = route.params || {};
+
+  const [mise,    setMise]    = useState(1000);
+  const [loading, setLoading] = useState(false);
+  const [queued,  setQueued]  = useState(false);
+
+  const game   = GAMES[gameKey]   || {};
+  const palier = PALIERS[defi?.p] || {};
+  const color  = game.color       || T.gaming;
+
+  // Calculs financiers
+  const gain       = Math.round(mise * (defi?.cote || 1));
+  const gainNet    = gain - mise;
+  const filet      = Math.round(mise * 0.9); // 90% remboursé si défaite (filet)
+  const perteMax   = mise - filet;
+  const commission = Math.round(gain * 0.10);
+  const gainFinal  = gain - commission;
+
+  // Animations
+  const fadeAnim   = useRef(new Animated.Value(0)).current;
+  const heroAnim   = useRef(new Animated.Value(30)).current;
+  const coteAnim   = useRef(new Animated.Value(0.7)).current;
+  const cardAnim   = useRef(new Animated.Value(40)).current;
+  const glowAnim   = useRef(new Animated.Value(0)).current;
+  const queueAnim  = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim,  { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.spring(heroAnim,  { toValue: 0, tension: 55, friction: 10, useNativeDriver: true }),
+      Animated.spring(coteAnim,  { toValue: 1, tension: 45, friction: 8,  useNativeDriver: true, delay: 200 }),
+      Animated.spring(cardAnim,  { toValue: 0, tension: 55, friction: 10, useNativeDriver: true, delay: 150 }),
+    ]).start();
+
+    // Glow pulsant sur la cote
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 2000, useNativeDriver: false }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 2000, useNativeDriver: false }),
+      ])
+    ).start();
   }, []);
 
-  const handleMiseChange = (text) => {
-    const cleaned = text.replace(/[^0-9]/g, '');
-    const val = Number(cleaned);
-    if (cleaned === '') {
-      setMise(0);
-      setMiseError('');
-      return;
-    }
-    if (val < 200) {
-      setMiseError('Minimum 200 FCFA');
-      setMise(val);
-    } else if (val > 20000) {
-      setMiseError('Maximum 20 000 FCFA');
-      setMise(20000);
-    } else {
-      setMiseError('');
-      setMise(val);
-    }
-  };
+  const glowOpacity = glowAnim.interpolate({
+    inputRange: [0, 1], outputRange: [0.3, 0.7],
+  });
 
-  if (!defi) {
-    return (
-      <View style={styles.screen}>
-        <Text style={styles.errorText}>Aucun défi sélectionné</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backLink}>Retour</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  /* ── Ajouter à la file d'attente ── */
+  const handleAddToQueue = async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-  const g = GAMES[gameKey] || {};
-  const pc = PALIERS[defi.p] || {};
-  const isPhysique = gameKey === 'physique';
-  const accentColor = isPhysique ? T.physique : (g.color || T.gaming);
+    // Animation bouton
+    Animated.sequence([
+      Animated.spring(queueAnim, { toValue: 0.92, tension: 300, useNativeDriver: true }),
+      Animated.spring(queueAnim, { toValue: 1,    tension: 200, useNativeDriver: true }),
+    ]).start();
 
-  const filet = calcFilet(mise, defi.cote);
-  const gain = Math.round(mise * defi.cote);
-  const ok = mise >= 200 && mise <= 20000;
+    try {
+      const stored  = await AsyncStorage.getItem('skillz_queue');
+      const queue   = stored ? JSON.parse(stored) : [];
 
-  const handleStart = () => {
-    if (!ok) {
-      Alert.alert('Mise invalide', 'La mise doit être entre 200 et 20 000 FCFA.');
-      return;
-    }
-    navigation.navigate('Live', {
-      bet: {
-        player: user?.user_metadata?.name || 'Joueur',
-        game: gameKey,
-        defi,
+      const item = {
+        ...defi,
+        gameKey,
         mise,
-        cote: defi.cote,
-        isPhysique,
-        userId: user?.id,
-      },
-    });
+        queueId:  `${defi?.id}_${Date.now()}`,
+        addedAt:  new Date().toISOString(),
+        gameName: game.label,
+        gameColor: color,
+      };
+
+      const newQueue = [item, ...queue];
+      await AsyncStorage.setItem('skillz_queue', JSON.stringify(newQueue));
+
+      setQueued(true);
+
+      Alert.alert(
+        '✅ Ajouté à la file !',
+        `"${defi?.nom}" est maintenant dans ta file d'attente sur l'accueil.`,
+        [{ text: 'Super !', onPress: () => navigation.goBack() }]
+      );
+    } catch (e) {
+      Alert.alert('Erreur', 'Impossible d\'ajouter à la file.');
+    }
   };
 
-  const handleAddToQueue = () => {
-    if (!ok) {
-      Alert.alert('Mise invalide', 'La mise doit être entre 200 et 20 000 FCFA.');
+  /* ── Placer le pari ── */
+  const handlePlay = async () => {
+    if (mise < MISE_MIN) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Mise trop faible', `Minimum ${fmt(MISE_MIN)} FCFA.`);
       return;
     }
-    addToQueue({
-      player: user?.user_metadata?.name || 'Joueur',
-      mise,
-      gameKey,
-      defi,
-    });
-    navigation.navigate('HomeTab', { screen: 'Lobby' });
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setLoading(true);
+
+    try {
+      const stored = await AsyncStorage.getItem('skillz_user');
+      const user   = JSON.parse(stored || '{}');
+
+      navigation.replace('DuelLobby', {
+        defi, gameKey, mise,
+        user,
+      });
+    } catch (e) {
+      Alert.alert('Erreur', e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMiseChange = (text) => {
+    const val = parseInt(text.replace(/\D/g, ''), 10) || MISE_MIN;
+    setMise(Math.max(MISE_MIN, Math.min(MISE_MAX, val)));
   };
 
   return (
-    <View style={styles.screen}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <ArrowLeft size={24} color={T.text} />
-        </TouchableOpacity>
-        <Text style={[styles.gameLabel, { color: accentColor }]}>{g.label}</Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="light-content" />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Card Défi */}
-        <View style={styles.defiCard}>
-          <View style={[styles.palierBadge, { backgroundColor: pc.dim, borderColor: pc.color + '40' }]}>
-            <Text style={[styles.palierText, { color: pc.color }]}>{pc.label?.toUpperCase()}</Text>
-          </View>
-          <Text style={styles.defiNom}>{defi.nom}</Text>
-          <Text style={[styles.coteText, { color: accentColor, textShadowColor: accentColor + '60' }]}>
-            ×{defi.cote.toFixed(2)}
-          </Text>
-          <Text style={styles.defiCond}>{defi.cond}</Text>
-          <View style={styles.tauxRow}>
-            <Clock size={14} color={T.muted} />
-            <Text style={styles.tauxText}>Réussite estimée : ~{defi.taux}%</Text>
-          </View>
-        </View>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* ── HEADER ── */}
+        <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); navigation.goBack(); }}
+          >
+            <ArrowLeft size={20} color="#EEEEF5" />
+          </TouchableOpacity>
 
-        {/* Saisie de la mise */}
-        <View style={styles.inputSection}>
-          <Text style={styles.inputLabel}>MISE EN FCFA</Text>
-          <TextInput
-            ref={inputRef}
-            style={styles.miseInput}
-            keyboardType="numeric"
-            value={mise === 0 ? '' : String(mise)}
-            onChangeText={handleMiseChange}
-            placeholder="1000"
-            placeholderTextColor="#555"
-            maxLength={5}
-          />
-          {miseError ? (
-            <Text style={styles.miseError}>{miseError}</Text>
-          ) : (
-            <Text style={styles.miseHint}>Min 200 · Max 20 000 FCFA</Text>
-          )}
-        </View>
-
-        {/* Récap financier */}
-        <View style={styles.recapCard}>
-          <View style={styles.recapLine}>
-            <Text style={styles.recapLabel}>Gain potentiel</Text>
-            <Text style={[styles.recapValue, styles.gainValue]}>+{fmt(gain)} F</Text>
+          <View style={styles.headerTitle}>
+            <Text style={styles.headerGame}>{game.label?.split(' / ')?.[0] || gameKey?.toUpperCase()}</Text>
+            <Text style={[styles.headerGameAccent, { color }]}>
+              {' '}{game.label?.split(' / ')?.[1] || game.short || ''}
+            </Text>
           </View>
-          {filet > 0 && (
-            <View style={styles.recapLine}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Shield size={14} color="#A855F7" />
-                <Text style={[styles.recapLabel, { color: '#A855F7' }]}>Filet SKILL'Z</Text>
-              </View>
-              <Text style={[styles.recapValue, { color: '#A855F7' }]}>{fmt(filet)} F remboursés</Text>
+
+          <TouchableOpacity style={styles.headerBtn}>
+            <HelpCircle size={20} color={T.muted} />
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* ══ HERO CARD ══ */}
+        <Animated.View style={[
+          styles.heroCard,
+          { transform: [{ translateY: heroAnim }], opacity: fadeAnim },
+        ]}>
+          {/* Fond avec effet lumière */}
+          <View style={styles.heroBg}>
+            <View style={[styles.heroBgOrb1, { backgroundColor: color }]} />
+            <View style={styles.heroBgOrb2} />
+            <View style={[styles.heroBgOrb3, { backgroundColor: palier.color || T.gold }]} />
+            {/* Grille déco */}
+            <View style={styles.heroGrid} />
+          </View>
+
+          {/* Palier badge */}
+          <View style={[styles.palierBadge, { backgroundColor: (palier.color || T.gold) + '25', borderColor: palier.color || T.gold }]}>
+            <Text style={[styles.palierBadgeText, { color: palier.color || T.gold }]}>
+              {palier.label?.toUpperCase() || 'DÉBUTANT'}
+            </Text>
+          </View>
+
+          {/* Nom du défi */}
+          <Text style={styles.heroDefiNom}>{defi?.nom}</Text>
+
+          {/* Cote géante */}
+          <Animated.View style={[styles.coteWrap, { transform: [{ scale: coteAnim }] }]}>
+            <Animated.View style={[styles.coteGlow, { opacity: glowOpacity, shadowColor: color }]} />
+            <Text style={[styles.coteText, { color }]}>
+              ×{(defi?.cote || 1).toFixed(2)}
+            </Text>
+          </Animated.View>
+
+          {/* Condition */}
+          <Text style={styles.heroCond}>{defi?.cond}</Text>
+
+          {/* Taux réussite */}
+          <View style={styles.tauxPill}>
+            <Clock size={13} color="rgba(255,255,255,0.6)" />
+            <Text style={styles.tauxText}>
+              Réussite estimée : ~{defi?.taux || 0}%
+            </Text>
+          </View>
+        </Animated.View>
+
+        {/* ══ MISE ══ */}
+        <Animated.View style={[styles.miseSection, { opacity: fadeAnim, transform: [{ translateY: cardAnim }] }]}>
+          <Text style={styles.sectionLabel}>MISE EN FCFA</Text>
+
+          {/* Input mise */}
+          <View style={[styles.miseInputCard, { borderColor: color + '60' }]}>
+            {/* Icône pièces */}
+            <View style={[styles.miseIconBox, { backgroundColor: color + '20' }]}>
+              <Text style={{ fontSize: 20 }}>🪙</Text>
             </View>
-          )}
-          <View style={styles.recapLine}>
-            <Text style={styles.recapLabel}>Perte max</Text>
-            <Text style={[styles.recapValue, { color: T.danger }]}>-{fmt(mise - filet)} F</Text>
+
+            {/* Valeur */}
+            <TextInput
+              style={styles.miseInput}
+              value={String(mise)}
+              onChangeText={handleMiseChange}
+              keyboardType="numeric"
+              selectTextOnFocus
+            />
+
+            {/* Label devise */}
+            <View style={styles.miseDevise}>
+              <Text style={styles.miseDeviseText}>FCFA</Text>
+              <Text style={[styles.miseDeviseChevron, { color }]}>▼</Text>
+            </View>
           </View>
-        </View>
 
-        {/* Boutons intégrés dans le scroll */}
-        <TouchableOpacity
-          style={[styles.startButton, { backgroundColor: accentColor, shadowColor: accentColor }]}
-          onPress={handleStart}
-          activeOpacity={0.85}
-        >
-          <Zap size={20} color="#0F1217" />
-          <Text style={styles.startText}>COMMENCER</Text>
-        </TouchableOpacity>
+          {/* Slider */}
+          <View style={styles.sliderSection}>
+            <Text style={styles.sliderBound}>{fmt(MISE_MIN)}</Text>
+            <View style={{ flex: 1, marginHorizontal: 8 }}>
+              <CustomSlider
+                value={mise}
+                onValueChange={(v) => { setMise(v); }}
+                min={MISE_MIN}
+                max={MISE_MAX}
+                color={color}
+              />
+            </View>
+            <Text style={styles.sliderBound}>{fmt(MISE_MAX)}</Text>
+          </View>
+          <Text style={styles.sliderHint}>Min {fmt(MISE_MIN)}  •  Max {fmt(MISE_MAX)} FCFA</Text>
 
-        <TouchableOpacity
-          style={styles.queueButton}
-          onPress={handleAddToQueue}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.queueText}>AJOUTER À LA FILE D'ATTENTE</Text>
-        </TouchableOpacity>
+          {/* Mises rapides */}
+          <View style={styles.misesRapides}>
+            {[500, 1000, 2000, 5000].map(m => (
+              <TouchableOpacity
+                key={`mise_${m}`}
+                style={[styles.miseChip, mise === m && { backgroundColor: color + '20', borderColor: color }]}
+                onPress={() => { Haptics.selectionAsync(); setMise(m); }}
+              >
+                <Text style={[styles.miseChipText, mise === m && { color }]}>
+                  {fmt(m)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+
+        {/* ══ GAINS ══ */}
+        <Animated.View style={[styles.gainsCard, { opacity: fadeAnim, transform: [{ translateY: cardAnim }] }]}>
+          {/* Gain potentiel */}
+          <View style={styles.gainsRow}>
+            <View style={styles.gainsLeft}>
+              <TrendingUp size={14} color={T.success} />
+              <Text style={styles.gainsLabel}>Gain potentiel</Text>
+            </View>
+            <View style={styles.gainsRight}>
+              <Text style={[styles.gainsValue, { color: T.success }]}>
+                +{fmt(gainFinal)}
+              </Text>
+              <Text style={styles.gainsCurrency}>FCFA</Text>
+            </View>
+          </View>
+
+          <View style={styles.gainsDivider} />
+
+          {/* Filet SKILL'Z */}
+          <View style={styles.gainsRow}>
+            <View style={styles.gainsLeft}>
+              <Shield size={14} color="#A855F7" />
+              <Text style={styles.gainsLabel}>Filet SKILL'Z</Text>
+            </View>
+            <View style={styles.gainsRight}>
+              <Text style={[styles.gainsValue, { color: '#A855F7' }]}>{fmt(filet)}</Text>
+              <Text style={[styles.gainsCurrency, { color: T.muted }]}>FCFA remboursés</Text>
+            </View>
+          </View>
+
+          <View style={styles.gainsDivider} />
+
+          {/* Perte max */}
+          <View style={styles.gainsRow}>
+            <View style={styles.gainsLeft}>
+              <Text style={styles.gainsLabel}>Perte max</Text>
+            </View>
+            <View style={styles.gainsRight}>
+              <Text style={[styles.gainsValue, { color: T.danger }]}>
+                -{fmt(perteMax)}
+              </Text>
+              <Text style={styles.gainsCurrency}>FCFA</Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* ══ BOUTONS ══ */}
+        <Animated.View style={[styles.btnsSection, { opacity: fadeAnim }]}>
+
+          {/* Bouton FILE D'ATTENTE */}
+          <Animated.View style={{ transform: [{ scale: queueAnim }] }}>
+            <TouchableOpacity
+              style={[
+                styles.queueBtn,
+                queued && { backgroundColor: T.success + '15', borderColor: T.success + '50' },
+              ]}
+              onPress={handleAddToQueue}
+              activeOpacity={0.8}
+              disabled={queued}
+            >
+              {queued
+                ? <Layers size={16} color={T.success} />
+                : <Plus   size={16} color={T.gold}    />
+              }
+              <Text style={[
+                styles.queueBtnText,
+                queued && { color: T.success },
+              ]}>
+                {queued ? 'AJOUTÉ À LA FILE ✓' : 'AJOUTER À LA FILE D\'ATTENTE'}
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Bouton PLACER LE PARI */}
+          <TouchableOpacity
+            style={styles.playBtn}
+            onPress={handlePlay}
+            activeOpacity={0.88}
+            disabled={loading}
+          >
+            {/* Fond dégradé simulé */}
+            <View style={[styles.playBtnGradient, { backgroundColor: color }]} />
+            <View style={styles.playBtnGradient2} />
+
+            <View style={styles.playBtnInner}>
+              {loading ? (
+                <ActivityIndicator color="#000" size="small" />
+              ) : (
+                <>
+                  <Text style={styles.playBtnText}>PLACER LE PARI</Text>
+                  <View style={styles.playBtnIcon}>
+                    <Zap size={18} color={color} fill={color} />
+                  </View>
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#0F1217',
-  },
+  screen:        { flex: 1, backgroundColor: '#080A0F' },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 40 },
+
+  /* Header */
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 14,
-    backgroundColor: '#0F1217',
-    borderBottomWidth: 1,
-    borderColor: T.border,
+    paddingTop: 12, marginBottom: 20,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+  headerBtn: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  gameLabel: {
-    fontFamily: T.fontTitle,
-    fontSize: 18,
-    letterSpacing: 1,
+  headerTitle: { flexDirection: 'row', alignItems: 'baseline' },
+  headerGame: {
+    fontFamily: 'Rajdhani-Bold', fontSize: 20,
+    color: '#EEEEF5', letterSpacing: 1,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 140,
+  headerGameAccent: {
+    fontFamily: 'Rajdhani-Bold', fontSize: 20, letterSpacing: 1,
   },
-  defiCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 25,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.10)',
-    padding: 24,
-    marginTop: 20,
-    alignItems: 'center',
+
+  /* Hero card */
+  heroCard: {
+    borderRadius: 24, overflow: 'hidden',
+    marginBottom: 20, padding: 24,
+    alignItems: 'center', minHeight: 320,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    position: 'relative',
   },
+  heroBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0A0D12',
+  },
+  heroBgOrb1: {
+    position: 'absolute', top: -80, left: -60,
+    width: 240, height: 240, borderRadius: 120, opacity: 0.18,
+  },
+  heroBgOrb2: {
+    position: 'absolute', bottom: -40, right: -40,
+    width: 180, height: 180, borderRadius: 90,
+    backgroundColor: '#8A2BE2', opacity: 0.12,
+  },
+  heroBgOrb3: {
+    position: 'absolute', top: 60, right: -30,
+    width: 120, height: 120, borderRadius: 60, opacity: 0.10,
+  },
+  heroGrid: {
+    position: 'absolute', inset: 0, opacity: 0.03,
+    borderWidth: 0,
+  },
+
   palierBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 16,
+    borderWidth: 1, borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 6,
+    marginBottom: 16, zIndex: 1,
   },
-  palierText: {
-    fontFamily: T.fontBody,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.5,
+  palierBadgeText: {
+    fontFamily: 'Inter-Regular', fontSize: 11,
+    fontWeight: '800', letterSpacing: 2,
   },
-  defiNom: {
-    fontFamily: T.fontTitle,
-    fontSize: 26,
-    color: '#fff',
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 16,
+
+  heroDefiNom: {
+    fontFamily: 'Rajdhani-Bold', fontSize: 30,
+    color: '#FFFFFF', letterSpacing: 1,
+    textAlign: 'center', marginBottom: 12, zIndex: 1,
+  },
+
+  coteWrap: {
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12, zIndex: 1, position: 'relative',
+  },
+  coteGlow: {
+    position: 'absolute', width: 200, height: 80,
+    borderRadius: 40, opacity: 0.3,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1, shadowRadius: 30, elevation: 0,
   },
   coteText: {
-    fontFamily: T.fontMono,
-    fontSize: 80,
-    fontWeight: '900',
+    fontFamily: 'Rajdhani-Bold', fontSize: 72,
+    letterSpacing: 2,
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 20,
-    marginBottom: 16,
   },
-  defiCond: {
-    fontFamily: T.fontBody,
-    fontSize: 14,
-    color: T.muted,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 12,
+
+  heroCond: {
+    fontFamily: 'Inter-Regular', fontSize: 14,
+    color: 'rgba(255,255,255,0.6)', textAlign: 'center',
+    lineHeight: 20, marginBottom: 16, zIndex: 1,
+    paddingHorizontal: 10,
   },
-  tauxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+
+  tauxPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8,
+    zIndex: 1,
   },
   tauxText: {
-    fontFamily: T.fontBody,
-    fontSize: 12,
-    color: T.muted,
+    fontFamily: 'Inter-Regular', fontSize: 13,
+    color: 'rgba(255,255,255,0.65)',
   },
-  inputSection: {
-    marginTop: 28,
+
+  /* Mise */
+  miseSection: { marginBottom: 14 },
+  sectionLabel: {
+    fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted,
+    fontWeight: '800', letterSpacing: 2, marginBottom: 10,
   },
-  inputLabel: {
-    fontFamily: T.fontBody,
-    fontSize: 12,
-    color: T.muted,
-    letterSpacing: 1.5,
-    marginBottom: 10,
+
+  miseInputCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#0D1118', borderRadius: 16,
+    borderWidth: 1.5, padding: 14, gap: 14, marginBottom: 16,
+  },
+  miseIconBox: {
+    width: 44, height: 44, borderRadius: 12,
+    justifyContent: 'center', alignItems: 'center',
   },
   miseInput: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: T.border,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    fontFamily: T.fontMono,
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#fff',
-    textAlign: 'center',
+    flex: 1, fontFamily: 'Rajdhani-Bold',
+    fontSize: 36, color: '#FFFFFF',
+    padding: 0,
   },
-  miseError: {
-    fontFamily: T.fontBody,
-    fontSize: 12,
-    color: T.danger,
-    marginTop: 6,
-    textAlign: 'center',
+  miseDevise: { alignItems: 'flex-end', gap: 2 },
+  miseDeviseText: {
+    fontFamily: 'Inter-Regular', fontSize: 13,
+    color: T.muted, fontWeight: '700',
   },
-  miseHint: {
-    fontFamily: T.fontBody,
-    fontSize: 11,
-    color: '#555',
-    marginTop: 6,
-    textAlign: 'center',
+  miseDeviseChevron: { fontSize: 10 },
+
+  /* Slider */
+  sliderSection: {
+    flexDirection: 'row', alignItems: 'center',
+    marginBottom: 8,
   },
-  recapCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 16,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.10)',
-    padding: 20,
-    marginTop: 28,
+  sliderBound: {
+    fontFamily: 'Inter-Regular', fontSize: 11,
+    color: T.muted, fontWeight: '600',
   },
-  recapLine: {
-    flexDirection: 'row',
+  sliderTrack: {
+    height: 32, justifyContent: 'center', position: 'relative',
+  },
+  sliderTrackBg: {
+    position: 'absolute', left: 0, right: 0,
+    height: 4, backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 2,
+  },
+  sliderFill: {
+    position: 'absolute', left: 0,
+    height: 4, borderRadius: 2,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8, shadowRadius: 10, elevation: 8,
+    top: 5,
+  },
+  sliderHint: {
+    fontFamily: 'Inter-Regular', fontSize: 11,
+    color: T.muted, textAlign: 'center', marginBottom: 14,
+  },
+
+  /* Mises rapides */
+  misesRapides: { flexDirection: 'row', gap: 8 },
+  miseChip: {
+    flex: 1, paddingVertical: 9, borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)', alignItems: 'center',
+  },
+  miseChipText: {
+    fontFamily: 'Inter-Regular', fontSize: 12,
+    color: T.muted, fontWeight: '700',
+  },
+
+  /* Gains card */
+  gainsCard: {
+    backgroundColor: '#0D1118', borderRadius: 16,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+    padding: 18, marginBottom: 20,
+  },
+  gainsRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', paddingVertical: 10,
+  },
+  gainsLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  gainsRight:{ flexDirection: 'row', alignItems: 'baseline', gap: 5 },
+  gainsLabel:{ fontFamily: 'Inter-Regular', fontSize: 14, color: '#EEEEF5' },
+  gainsValue:{ fontFamily: 'Rajdhani-Bold', fontSize: 22, letterSpacing: 0.5 },
+  gainsCurrency:{ fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted },
+  gainsDivider:{ height: 1, backgroundColor: 'rgba(255,255,255,0.05)' },
+
+  /* Boutons */
+  btnsSection: { gap: 12 },
+
+  queueBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 14, borderRadius: 14,
+    borderWidth: 1.5, borderColor: T.gold + '40',
+    backgroundColor: T.gold + '08',
+  },
+  queueBtnText: {
+    fontFamily: 'Rajdhani-Bold', fontSize: 15,
+    color: T.gold, letterSpacing: 1.5,
+  },
+
+  playBtn: {
+    borderRadius: 18, overflow: 'hidden',
+    height: 60, position: 'relative',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4, shadowRadius: 20, elevation: 12,
+  },
+  playBtnGradient: {
+    ...StyleSheet.absoluteFillObject, opacity: 0.9,
+  },
+  playBtnGradient2: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    left: '50%',
+  },
+  playBtnInner: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
+    paddingHorizontal: 24,
   },
-  recapLabel: {
-    fontFamily: T.fontBody,
-    fontSize: 13,
-    color: T.muted,
+  playBtnText: {
+    fontFamily: 'Rajdhani-Bold', fontSize: 20,
+    color: '#000', letterSpacing: 2, fontWeight: '900',
   },
-  recapValue: {
-    fontFamily: T.fontMono,
-    fontSize: 18,
-    fontWeight: '700',
-    color: T.text,
-  },
-  gainValue: {
-    fontSize: 36,
-    color: '#00E676',
-    fontWeight: '900',
-  },
-  startButton: {
-    borderRadius: 16,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    marginTop: 28,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  startText: {
-    fontFamily: T.fontTitle,
-    fontSize: 18,
-    color: '#0F1217',
-    letterSpacing: 2,
-  },
-  queueButton: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: T.border,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  queueText: {
-    fontFamily: T.fontTitle,
-    fontSize: 16,
-    color: T.muted,
-    letterSpacing: 1,
-  },
-  errorText: {
-    color: T.text,
-    fontSize: 18,
-    textAlign: 'center',
-    marginTop: 100,
-    fontFamily: T.fontBody,
-  },
-  backLink: {
-    color: T.gold,
-    textAlign: 'center',
-    marginTop: 20,
-    fontFamily: T.fontBody,
+  playBtnIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center', alignItems: 'center',
   },
 });
