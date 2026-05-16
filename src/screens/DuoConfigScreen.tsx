@@ -8,7 +8,7 @@ import { GAMES } from '../constants/games';
 import { PALIERS } from '../constants/paliers';
 import { DUEL_TYPES } from '../constants/duelTypes';
 import { T } from '../utils/designTokens';
-import { fmt, filet as calcFilet } from '../utils/helpers';
+import { fmt, filet as calcFilet } from '../utils/helper';
 import CoteDisplay from '../components/CoteDisplay';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSession } from '../context/SessionContext';

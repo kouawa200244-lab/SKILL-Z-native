@@ -20,7 +20,7 @@ import {
 import { GAMES } from '../constants/games';
 import { PALIERS } from '../constants/paliers';
 import { T } from '../utils/designTokens';
-import { fmt, pad2 } from '../utils/helpers';
+import { fmt, pad2 } from '../utils/helper';
 import CoteDisplay from '../components/CoteDisplay';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSession } from '../context/SessionContext';

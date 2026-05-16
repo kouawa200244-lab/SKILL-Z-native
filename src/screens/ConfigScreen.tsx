@@ -12,12 +12,13 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T } from '../utils/designTokens';
-import { fmt } from '../utils/helpers';
+import { fmt } from '../utils/helper';
 import { GAMES } from '../constants/games';
 import { PALIERS } from '../constants/paliers';
-import { coteCol } from '../utils/helpers';
+import { coteCol } from '../utils/helper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { addToQueue } from '../utils/queueService'; // ✅ ajoute cet import
 
 const { width: W } = Dimensions.get('window');
 
@@ -44,16 +45,6 @@ function CustomSlider({ value, onValueChange, min, max, color }) {
     inputRange: [0, 1],
     outputRange: [0, SLIDER_W],
   });
-
-  const handleSubmit = () => {
-  if (!ok) return;
-  addToQueue({ player: player.trim(), mise, gameKey, defi });
-  
-  // Petit délai pour que le state soit mis à jour avant la navigation
-  setTimeout(() => {
-    navigation.navigate('HomeTab', { screen: 'Lobby' });
-  }, 100);
-};
 
   const thumbLeft = fillAnim.interpolate({
     inputRange: [0, 1],
@@ -86,11 +77,8 @@ function CustomSlider({ value, onValueChange, min, max, color }) {
         style={[styles.sliderTrack]}
         {...panResponder.panHandlers}
       >
-        {/* Track fond */}
         <View style={styles.sliderTrackBg} />
-        {/* Fill */}
         <Animated.View style={[styles.sliderFill, { width: fillWidth, backgroundColor: color }]} />
-        {/* Thumb */}
         <Animated.View style={[
           styles.sliderThumb,
           {
@@ -122,15 +110,13 @@ export default function ConfigScreen() {
   const palier = PALIERS[defi?.p] || {};
   const color  = game.color       || T.gaming;
 
-  // Calculs financiers
   const gain       = Math.round(mise * (defi?.cote || 1));
   const gainNet    = gain - mise;
-  const filet      = Math.round(mise * 0.9); // 90% remboursé si défaite (filet)
+  const filet      = Math.round(mise * 0.9);
   const perteMax   = mise - filet;
   const commission = Math.round(gain * 0.10);
   const gainFinal  = gain - commission;
 
-  // Animations
   const fadeAnim   = useRef(new Animated.Value(0)).current;
   const heroAnim   = useRef(new Animated.Value(30)).current;
   const coteAnim   = useRef(new Animated.Value(0.7)).current;
@@ -146,7 +132,6 @@ export default function ConfigScreen() {
       Animated.spring(cardAnim,  { toValue: 0, tension: 55, friction: 10, useNativeDriver: true, delay: 150 }),
     ]).start();
 
-    // Glow pulsant sur la cote
     Animated.loop(
       Animated.sequence([
         Animated.timing(glowAnim, { toValue: 1, duration: 2000, useNativeDriver: false }),
@@ -161,41 +146,33 @@ export default function ConfigScreen() {
 
   /* ── Ajouter à la file d'attente ── */
   const handleAddToQueue = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (queued) return;
+
+    // ✅ Feedback immédiat SANS attendre
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setQueued(true); // UI update instantanée
+
+    const result = await addToQueue(defi, gameKey, mise);
+
+    if (result.success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Petit délai pour que le state soit mis à jour avant la navigation
+      setTimeout(() => {
+        navigation.navigate('HomeTab', { screen: 'Lobby' });
+      }, 150);
+    } else if (result.reason === 'duplicate') {
+      setQueued(false);
+      Alert.alert('Déjà dans la file', 'Ce défi est déjà dans ta file d\'attente.');
+    } else {
+      setQueued(false);
+      Alert.alert('Erreur', 'Impossible d\'ajouter.');
+    }
 
     // Animation bouton
     Animated.sequence([
       Animated.spring(queueAnim, { toValue: 0.92, tension: 300, useNativeDriver: true }),
       Animated.spring(queueAnim, { toValue: 1,    tension: 200, useNativeDriver: true }),
     ]).start();
-
-    try {
-      const stored  = await AsyncStorage.getItem('skillz_queue');
-      const queue   = stored ? JSON.parse(stored) : [];
-
-      const item = {
-        ...defi,
-        gameKey,
-        mise,
-        queueId:  `${defi?.id}_${Date.now()}`,
-        addedAt:  new Date().toISOString(),
-        gameName: game.label,
-        gameColor: color,
-      };
-
-      const newQueue = [item, ...queue];
-      await AsyncStorage.setItem('skillz_queue', JSON.stringify(newQueue));
-
-      setQueued(true);
-
-      Alert.alert(
-        '✅ Ajouté à la file !',
-        `"${defi?.nom}" est maintenant dans ta file d'attente sur l'accueil.`,
-        [{ text: 'Super !', onPress: () => navigation.goBack() }]
-      );
-    } catch (e) {
-      Alert.alert('Erreur', 'Impossible d\'ajouter à la file.');
-    }
   };
 
   /* ── Placer le pari ── */
@@ -264,26 +241,21 @@ export default function ConfigScreen() {
           styles.heroCard,
           { transform: [{ translateY: heroAnim }], opacity: fadeAnim },
         ]}>
-          {/* Fond avec effet lumière */}
           <View style={styles.heroBg}>
             <View style={[styles.heroBgOrb1, { backgroundColor: color }]} />
             <View style={styles.heroBgOrb2} />
             <View style={[styles.heroBgOrb3, { backgroundColor: palier.color || T.gold }]} />
-            {/* Grille déco */}
             <View style={styles.heroGrid} />
           </View>
 
-          {/* Palier badge */}
           <View style={[styles.palierBadge, { backgroundColor: (palier.color || T.gold) + '25', borderColor: palier.color || T.gold }]}>
             <Text style={[styles.palierBadgeText, { color: palier.color || T.gold }]}>
               {palier.label?.toUpperCase() || 'DÉBUTANT'}
             </Text>
           </View>
 
-          {/* Nom du défi */}
           <Text style={styles.heroDefiNom}>{defi?.nom}</Text>
 
-          {/* Cote géante */}
           <Animated.View style={[styles.coteWrap, { transform: [{ scale: coteAnim }] }]}>
             <Animated.View style={[styles.coteGlow, { opacity: glowOpacity, shadowColor: color }]} />
             <Text style={[styles.coteText, { color }]}>
@@ -291,10 +263,8 @@ export default function ConfigScreen() {
             </Text>
           </Animated.View>
 
-          {/* Condition */}
           <Text style={styles.heroCond}>{defi?.cond}</Text>
 
-          {/* Taux réussite */}
           <View style={styles.tauxPill}>
             <Clock size={13} color="rgba(255,255,255,0.6)" />
             <Text style={styles.tauxText}>
@@ -307,14 +277,11 @@ export default function ConfigScreen() {
         <Animated.View style={[styles.miseSection, { opacity: fadeAnim, transform: [{ translateY: cardAnim }] }]}>
           <Text style={styles.sectionLabel}>MISE EN FCFA</Text>
 
-          {/* Input mise */}
           <View style={[styles.miseInputCard, { borderColor: color + '60' }]}>
-            {/* Icône pièces */}
             <View style={[styles.miseIconBox, { backgroundColor: color + '20' }]}>
               <Text style={{ fontSize: 20 }}>🪙</Text>
             </View>
 
-            {/* Valeur */}
             <TextInput
               style={styles.miseInput}
               value={String(mise)}
@@ -323,14 +290,12 @@ export default function ConfigScreen() {
               selectTextOnFocus
             />
 
-            {/* Label devise */}
             <View style={styles.miseDevise}>
               <Text style={styles.miseDeviseText}>FCFA</Text>
               <Text style={[styles.miseDeviseChevron, { color }]}>▼</Text>
             </View>
           </View>
 
-          {/* Slider */}
           <View style={styles.sliderSection}>
             <Text style={styles.sliderBound}>{fmt(MISE_MIN)}</Text>
             <View style={{ flex: 1, marginHorizontal: 8 }}>
@@ -346,7 +311,6 @@ export default function ConfigScreen() {
           </View>
           <Text style={styles.sliderHint}>Min {fmt(MISE_MIN)}  •  Max {fmt(MISE_MAX)} FCFA</Text>
 
-          {/* Mises rapides */}
           <View style={styles.misesRapides}>
             {[500, 1000, 2000, 5000].map(m => (
               <TouchableOpacity
@@ -364,7 +328,6 @@ export default function ConfigScreen() {
 
         {/* ══ GAINS ══ */}
         <Animated.View style={[styles.gainsCard, { opacity: fadeAnim, transform: [{ translateY: cardAnim }] }]}>
-          {/* Gain potentiel */}
           <View style={styles.gainsRow}>
             <View style={styles.gainsLeft}>
               <TrendingUp size={14} color={T.success} />
@@ -380,7 +343,6 @@ export default function ConfigScreen() {
 
           <View style={styles.gainsDivider} />
 
-          {/* Filet SKILL'Z */}
           <View style={styles.gainsRow}>
             <View style={styles.gainsLeft}>
               <Shield size={14} color="#A855F7" />
@@ -394,7 +356,6 @@ export default function ConfigScreen() {
 
           <View style={styles.gainsDivider} />
 
-          {/* Perte max */}
           <View style={styles.gainsRow}>
             <View style={styles.gainsLeft}>
               <Text style={styles.gainsLabel}>Perte max</Text>
@@ -411,7 +372,6 @@ export default function ConfigScreen() {
         {/* ══ BOUTONS ══ */}
         <Animated.View style={[styles.btnsSection, { opacity: fadeAnim }]}>
 
-          {/* Bouton FILE D'ATTENTE */}
           <Animated.View style={{ transform: [{ scale: queueAnim }] }}>
             <TouchableOpacity
               style={[
@@ -435,14 +395,12 @@ export default function ConfigScreen() {
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Bouton PLACER LE PARI */}
           <TouchableOpacity
             style={styles.playBtn}
             onPress={handlePlay}
             activeOpacity={0.88}
             disabled={loading}
           >
-            {/* Fond dégradé simulé */}
             <View style={[styles.playBtnGradient, { backgroundColor: color }]} />
             <View style={styles.playBtnGradient2} />
 

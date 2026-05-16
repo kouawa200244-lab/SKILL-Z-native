@@ -1,4 +1,4 @@
-// src/utils/helpers.js
+// src/utils/helper.js
 
 /**
  * Formate un nombre en chaîne lisible (ex: 1 500 000 → "1 500 000")

@@ -12,7 +12,7 @@ import {
   ActivityIndicator, Alert
 } from 'react-native';
 import { T } from '../utils/designTokens';
-import { fmt } from '../utils/helpers';
+import { fmt } from '../utils/helper';
 import { PALIERS } from '../constants/paliers';
 import {
   playBet,

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T } from '../utils/designTokens';
-import { fmt } from '../utils/helpers';
+import { fmt } from '../utils/helper';
 import { useNavigation } from '@react-navigation/native';
 
 const { width: W } = Dimensions.get('window');

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T } from '../utils/designTokens';
-import { fmt } from '../utils/helpers';
+import { fmt } from '../utils/helper';
 import { GAMES } from '../constants/games';
 import { PALIERS } from '../constants/paliers';
 import { supabase } from '../supabaseClient';

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text } from 'react-native';
-import { coteCol } from '../utils/helpers';
+import { coteCol } from '../utils/helper';
 import { T } from '../utils/designTokens';
 
 export default function CoteDisplay({ cote, size = 18 }) {

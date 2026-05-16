@@ -1,17 +1,20 @@
 // @ts-nocheck
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Animated, StatusBar, Dimensions,
+  Image, Alert, ActivityIndicator,
 } from 'react-native';
 import {
   User, Trophy, TrendingDown, TrendingUp,
   Coins, LogOut, ChevronRight, Shield,
-  Star, Zap, Target, Medal,
+  Star, Zap, Target, Medal, Camera,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T } from '../utils/designTokens';
-import { fmt } from '../utils/helpers';
+import { fmt } from '../utils/helper';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { pickProfileImage, updateProfileAvatar } from '../utils/uploadService';
 
 const { width: W } = Dimensions.get('window');
 
@@ -24,8 +27,8 @@ const RANK_CONFIG = {
   'RANG LÉGENDE':  { color: '#EF4444', glow: '#EF444440', label: 'LÉGENDE' },
 };
 
-export default function ProfileScreen2({
-  username = 'Brael',
+export default function ProfileScreen({
+  username = 'brael',
   rank = 'RANG OR II',
   walletBalance = 0,
   history = [],
@@ -38,6 +41,28 @@ export default function ProfileScreen2({
   const scaleAvatar = useRef(new Animated.Value(0.8)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
 
+  // ══════════════════════════════════════
+  // ÉTAT POUR L'AVATAR
+  // ══════════════════════════════════════
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Charger l'avatar existant depuis AsyncStorage
+    const loadAvatar = async () => {
+      const stored = await AsyncStorage.getItem('skillz_user');
+      if (stored) {
+        const user = JSON.parse(stored);
+        setUserId(user.id);
+        if (user.avatar_url) {
+          setAvatarUrl(user.avatar_url);
+        }
+      }
+    };
+    loadAvatar();
+  }, []);
+
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim,  { toValue: 1, duration: 700, useNativeDriver: true }),
@@ -48,6 +73,35 @@ export default function ProfileScreen2({
       ),
     ]).start();
   }, []);
+
+  // ══════════════════════════════════════
+  // FONCTION UPLOAD AVATAR
+  // ══════════════════════════════════════
+  const handlePickImage = async () => {
+    if (uploading) return;
+
+    setUploading(true);
+    const url = await pickProfileImage();
+
+    if (url) {
+      setAvatarUrl(url);
+
+      // Mettre à jour dans Supabase
+      if (userId) {
+        await updateProfileAvatar(userId, url);
+      }
+
+      // Mettre à jour dans AsyncStorage
+      const stored = await AsyncStorage.getItem('skillz_user');
+      if (stored) {
+        const user = JSON.parse(stored);
+        user.avatar_url = url;
+        await AsyncStorage.setItem('skillz_user', JSON.stringify(user));
+      }
+    }
+
+    setUploading(false);
+  };
 
   const spin = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
@@ -75,37 +129,51 @@ export default function ProfileScreen2({
 
         {/* ── HERO SECTION ── */}
         <Animated.View style={[styles.hero, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-
-          {/* Orbes déco */}
           <View style={[styles.orb1, { backgroundColor: rankCfg.color }]} />
           <View style={styles.orb2} />
 
-          {/* Avatar */}
-          <Animated.View style={[styles.avatarWrapper, { transform: [{ scale: scaleAvatar }] }]}>
-            {/* Anneau rotatif */}
-            <Animated.View style={[styles.avatarRing, { borderColor: rankCfg.color, transform: [{ rotate: spin }] }]} />
-            <View style={[styles.avatarInner, { backgroundColor: rankCfg.color + '15' }]}>
-              <User size={44} color={rankCfg.color} />
-            </View>
-          </Animated.View>
+          {/* Avatar avec bouton upload */}
+          <TouchableOpacity
+            onPress={handlePickImage}
+            disabled={uploading}
+            activeOpacity={0.8}
+            style={styles.avatarTouchable}
+          >
+            <Animated.View style={[styles.avatarWrapper, { transform: [{ scale: scaleAvatar }] }]}>
+              <Animated.View style={[styles.avatarRing, { borderColor: rankCfg.color, transform: [{ rotate: spin }] }]} />
 
-          {/* Nom */}
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+              ) : (
+                <View style={[styles.avatarInner, { backgroundColor: rankCfg.color + '15' }]}>
+                  <User size={44} color={rankCfg.color} />
+                </View>
+              )}
+
+              {/* Badge appareil photo */}
+              <View style={styles.cameraBadge}>
+                {uploading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Camera size={14} color="#fff" />
+                )}
+              </View>
+            </Animated.View>
+          </TouchableOpacity>
+
           <Text style={styles.username}>{username}</Text>
 
-          {/* Rang badge */}
           <View style={[styles.rankBadge, { backgroundColor: rankCfg.glow, borderColor: rankCfg.color + '60' }]}>
             <Shield size={11} color={rankCfg.color} />
             <Text style={[styles.rankText, { color: rankCfg.color }]}>{rank}</Text>
           </View>
 
-          {/* Solde inline */}
           <View style={[styles.balancePill, { borderColor: T.gold + '30' }]}>
             <Coins size={14} color={T.gold} />
             <Text style={styles.balanceText}>{fmt(walletBalance)} FCFA</Text>
           </View>
         </Animated.View>
 
-        {/* ── DIVIDER ── */}
         <View style={styles.divider} />
 
         {/* ── STATS GRID ── */}
@@ -133,20 +201,15 @@ export default function ProfileScreen2({
             </View>
             <View style={[styles.xpBadge, { backgroundColor: rankCfg.color + '15' }]}>
               <Star size={11} color={rankCfg.color} />
-              <Text style={[styles.xpText, { color: rankCfg.color }]}>
-                {wins * 100} XP
-              </Text>
+              <Text style={[styles.xpText, { color: rankCfg.color }]}>{wins * 100} XP</Text>
             </View>
           </View>
           <View style={styles.progressTrack}>
             <Animated.View
-              style={[
-                styles.progressFill,
-                {
-                  width: `${Math.min(winRate, 100)}%`,
-                  backgroundColor: rankCfg.color,
-                }
-              ]}
+              style={[styles.progressFill, {
+                width: `${Math.min(winRate, 100)}%`,
+                backgroundColor: rankCfg.color,
+              }]}
             />
           </View>
           <View style={styles.progressLabels}>
@@ -159,11 +222,10 @@ export default function ProfileScreen2({
         {/* ── DERNIÈRES MISES ── */}
         <View style={styles.historyCard}>
           <Text style={styles.sectionTitle}>DERNIÈRES MISES</Text>
-
           {history.length === 0 ? (
             <View style={styles.emptyState}>
               <Target size={32} color={T.muted} />
-              <Text style={styles.emptyText}>Aucun défi joué pour le moment</Text>
+              <Text style={styles.emptyText}>Aucun défi joué</Text>
               <Text style={styles.emptySub}>Lance ton premier défi !</Text>
             </View>
           ) : (
@@ -208,34 +270,26 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 18, paddingBottom: 120 },
 
   /* Hero */
-  hero: {
-    alignItems: 'center', paddingTop: 20,
-    paddingBottom: 32, position: 'relative', overflow: 'hidden',
-  },
-  orb1: {
-    position: 'absolute', top: -60, right: -60,
-    width: 180, height: 180, borderRadius: 90, opacity: 0.08,
-  },
-  orb2: {
-    position: 'absolute', bottom: 0, left: -80,
-    width: 160, height: 160, borderRadius: 80,
-    backgroundColor: T.gaming, opacity: 0.06,
+  hero: { alignItems: 'center', paddingTop: 20, paddingBottom: 32, position: 'relative', overflow: 'hidden' },
+  orb1: { position: 'absolute', top: -60, right: -60, width: 180, height: 180, borderRadius: 90, opacity: 0.08 },
+  orb2: { position: 'absolute', bottom: 0, left: -80, width: 160, height: 160, borderRadius: 80, backgroundColor: T.gaming, opacity: 0.06 },
+
+  avatarTouchable: { marginBottom: 16 },
+
+  avatarWrapper: { position: 'relative', width: 100, height: 100, alignItems: 'center', justifyContent: 'center' },
+  avatarRing: { position: 'absolute', width: 100, height: 100, borderRadius: 50, borderWidth: 2, borderStyle: 'dashed' },
+  avatarImage: { width: 84, height: 84, borderRadius: 42, borderWidth: 2, borderColor: T.gold + '40' },
+  avatarInner: { width: 84, height: 84, borderRadius: 42, justifyContent: 'center', alignItems: 'center' },
+
+  cameraBadge: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: T.gold, justifyContent: 'center',
+    alignItems: 'center', borderWidth: 3,
+    borderColor: '#080A0F',
   },
 
-  avatarWrapper: { position: 'relative', marginBottom: 16, width: 100, height: 100, alignItems: 'center', justifyContent: 'center' },
-  avatarRing: {
-    position: 'absolute', width: 100, height: 100, borderRadius: 50,
-    borderWidth: 2, borderStyle: 'dashed',
-  },
-  avatarInner: {
-    width: 84, height: 84, borderRadius: 42,
-    justifyContent: 'center', alignItems: 'center',
-  },
-
-  username: {
-    fontFamily: 'Rajdhani-Bold', fontSize: 34, color: '#EEEEF5',
-    letterSpacing: 1, marginBottom: 10,
-  },
+  username: { fontFamily: 'Rajdhani-Bold', fontSize: 34, color: '#EEEEF5', letterSpacing: 1, marginBottom: 10 },
 
   rankBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -283,10 +337,7 @@ const styles = StyleSheet.create({
     borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
   },
   xpText: { fontFamily: 'Inter-Regular', fontSize: 11, fontWeight: '800' },
-  progressTrack: {
-    height: 6, backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 3, overflow: 'hidden', marginBottom: 8,
-  },
+  progressTrack: { height: 6, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
   progressFill: { height: '100%', borderRadius: 3 },
   progressLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   progressLabelText: { fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted },

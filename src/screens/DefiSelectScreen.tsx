@@ -10,7 +10,7 @@ import { GAMES } from '../constants/games';
 import { PALIERS } from '../constants/paliers';
 import { DEFIS } from '../constants/defis';
 import { T } from '../utils/designTokens';
-import { coteCol } from '../utils/helpers';
+import { coteCol } from '../utils/helper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 const { width: W } = Dimensions.get('window');
