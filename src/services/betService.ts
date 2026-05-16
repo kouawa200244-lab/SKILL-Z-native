@@ -214,16 +214,7 @@ export async function playBet(payload: BetPayload): Promise<BetResult> {
     }
 
     // ── 5. Rembourser le filet si défaite ─────────────────
-    if (outcome === 'loss' && filet > 0) {
-      const { balance: currentBalance } = await checkWalletBalance(userId, 0)
-        .then(r => ({ balance: r.balance }));
-      await creditWallet(userId, filet, currentBalance);
-
-      await logTransaction(userId, 'filet_skill', filet, {
-        bet_id:   bet.id,
-        defi_nom: defiNom,
-      });
-    }
+   // Pas de filet — la totalité de la mise est perdue
 
     // ── 6. Logger la mise dans tous les cas ───────────────
     await logTransaction(userId, 'bet_placed', -mise, {

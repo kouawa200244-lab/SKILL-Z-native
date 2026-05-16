@@ -1,4 +1,4 @@
-// src/utils/helper.js
+// src/utils/helpers.js
 
 /**
  * Formate un nombre en chaîne lisible (ex: 1 500 000 → "1 500 000")
@@ -9,9 +9,7 @@ export const fmt = (n) => new Intl.NumberFormat("fr-FR").format(Math.round(n));
  * Calcule le filet de sécurité (remboursement partiel en cas de perte)
  * Appliqué uniquement si mise ≤ 1000 F et cote < 2.0
  */
-export const filet = (m, c) =>
-  m <= 1000 && c < 2 ? Math.max(0, Math.round(m * (2 - c))) : 0;
-
+export const filet = () => 0; // Filet désactivé
 /**
  * Retourne la couleur associée à une cote
  */

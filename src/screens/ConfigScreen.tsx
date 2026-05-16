@@ -12,10 +12,10 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T } from '../utils/designTokens';
-import { fmt } from '../utils/helper';
+import { fmt } from '../utils/helpers';
 import { GAMES } from '../constants/games';
 import { PALIERS } from '../constants/paliers';
-import { coteCol } from '../utils/helper';
+import { coteCol } from '../utils/helpers';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { addToQueue } from '../utils/queueService'; // ✅ ajoute cet import
@@ -330,7 +330,7 @@ export default function ConfigScreen() {
         <Animated.View style={[styles.gainsCard, { opacity: fadeAnim, transform: [{ translateY: cardAnim }] }]}>
           <View style={styles.gainsRow}>
             <View style={styles.gainsLeft}>
-              <TrendingUp size={14} color={T.success} />
+              <TrendingUp size={30} color={T.success} />
               <Text style={styles.gainsLabel}>Gain potentiel</Text>
             </View>
             <View style={styles.gainsRight}>
@@ -343,28 +343,19 @@ export default function ConfigScreen() {
 
           <View style={styles.gainsDivider} />
 
-          <View style={styles.gainsRow}>
-            <View style={styles.gainsLeft}>
-              <Shield size={14} color="#A855F7" />
-              <Text style={styles.gainsLabel}>Filet SKILL'Z</Text>
-            </View>
-            <View style={styles.gainsRight}>
-              <Text style={[styles.gainsValue, { color: '#A855F7' }]}>{fmt(filet)}</Text>
-              <Text style={[styles.gainsCurrency, { color: T.muted }]}>FCFA remboursés</Text>
-            </View>
-          </View>
+          
 
           <View style={styles.gainsDivider} />
 
           <View style={styles.gainsRow}>
             <View style={styles.gainsLeft}>
-              <Text style={styles.gainsLabel}>Perte max</Text>
+              
             </View>
             <View style={styles.gainsRight}>
               <Text style={[styles.gainsValue, { color: T.danger }]}>
-                -{fmt(perteMax)}
+                
               </Text>
-              <Text style={styles.gainsCurrency}>FCFA</Text>
+
             </View>
           </View>
         </Animated.View>

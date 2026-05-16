@@ -12,9 +12,8 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T } from '../utils/designTokens';
-import { fmt } from '../utils/helper';
+import { fmt } from '../utils/helpers';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { pickProfileImage, updateProfileAvatar } from '../utils/uploadService';
 
 const { width: W } = Dimensions.get('window');
 

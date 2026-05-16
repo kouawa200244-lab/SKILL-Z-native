@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { ts } from '../utils/helper';
+import { ts } from '../utils/helpers';
 import { ensureWalletExists, fetchWalletBalance } from '../services/betService';
 
 const SessionContext = createContext(null);
