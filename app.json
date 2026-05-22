@@ -43,7 +43,8 @@
         {
           "cameraPermission": "SKILL'Z utilise la caméra pour valider tes défis physiques en analysant tes mouvements."
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

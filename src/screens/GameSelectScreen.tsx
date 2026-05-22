@@ -25,7 +25,6 @@ const GAME_META = {
 const FILTERS = [
   { key: 'tous',     label: 'TOUS' },
   { key: 'gaming',   label: 'GAMING' },
-  { key: 'physique', label: 'PHYSIQUE' },
 ];
 
 export default function GameSelectScreen() {

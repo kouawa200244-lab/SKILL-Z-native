@@ -65,7 +65,7 @@ export default function AppNavigator({ onLogout }) {
       <Stack.Screen name="GameSelect"  component={GameSelectScreen} options={SLIDE_RIGHT}  />
       <Stack.Screen name="DefiSelect"  component={DefiSelectScreen} options={SLIDE_RIGHT}  />
       <Stack.Screen name="Config"      component={ConfigScreen}     options={SLIDE_BOTTOM} />
-
+      
       {/* ── Flow Duel 1v1 ── */}
       <Stack.Screen name="DuelScreen"  component={DuoLobbyScreen}   options={SLIDE_RIGHT}  />
       <Stack.Screen name="DuelCreate"  component={DuoConfigScreen}  options={SLIDE_BOTTOM} />

@@ -175,31 +175,50 @@ export default function ConfigScreen() {
     ]).start();
   };
 
-  /* ── Placer le pari ── */
-  const handlePlay = async () => {
-    if (mise < MISE_MIN) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Mise trop faible', `Minimum ${fmt(MISE_MIN)} FCFA.`);
+  /* ── PLACER LE PARI → LiveScreen ── */
+const handlePlay = async () => {
+  if (mise < MISE_MIN) {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    Alert.alert('Mise trop faible', `Minimum ${fmt(MISE_MIN)} FCFA.`);
+    return;
+  }
+
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  setLoading(true);
+
+  try {
+    const stored = await AsyncStorage.getItem('skillz_user');
+    const user   = JSON.parse(stored || '{}');
+
+    // Vérifier le solde
+    if ((user.balance || 0) < mise) {
+      Alert.alert(
+        'Solde insuffisant',
+        `Ton solde : ${fmt(user.balance || 0)} FCFA\nMise requise : ${fmt(mise)} FCFA`,
+        [{ text: 'OK' }]
+      );
+      setLoading(false);
       return;
     }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    setLoading(true);
+    // Débiter localement (optimiste)
+    const updatedUser = { ...user, balance: user.balance - mise };
+    await AsyncStorage.setItem('skillz_user', JSON.stringify(updatedUser));
 
-    try {
-      const stored = await AsyncStorage.getItem('skillz_user');
-      const user   = JSON.parse(stored || '{}');
+    // ✅ Naviguer vers LiveScreen (et non DuelLobby)
+    navigate('Live', {
+      defi,
+      gameKey,
+      mise,
+      user: updatedUser,
+    });
 
-      navigation.replace('DuelLobby', {
-        defi, gameKey, mise,
-        user,
-      });
-    } catch (e) {
-      Alert.alert('Erreur', e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (e) {
+    Alert.alert('Erreur', e.message || 'Impossible de lancer le défi.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleMiseChange = (text) => {
     const val = parseInt(text.replace(/\D/g, ''), 10) || MISE_MIN;

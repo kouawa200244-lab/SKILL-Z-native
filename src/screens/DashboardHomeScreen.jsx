@@ -57,6 +57,23 @@ export default function LobbyScreen({ walletBalance = 0, history = [], activeBet
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" />
 
+{/* Bouton temporaire pour tester MediaPipe */}
+<TouchableOpacity
+  style={{
+    marginHorizontal: 16,
+    marginTop: 20,
+    backgroundColor: T.physique,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  }}
+  onPress={() => navigation.navigate('MediaPipeTest')}
+>
+  <Text style={{ fontFamily: T.fontTitle, fontSize: 16, color: '#fff', letterSpacing: 1 }}>
+    🧪 TESTER MEDIAPIPE
+  </Text>
+</TouchableOpacity>
+
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}

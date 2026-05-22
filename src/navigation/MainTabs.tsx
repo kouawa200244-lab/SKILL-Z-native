@@ -9,7 +9,6 @@ import * as Haptics from 'expo-haptics';
 import { Home, Clock, Wallet, User, Swords } from 'lucide-react-native';
 import { T } from '../utils/designTokens';
 
-// Écrans
 import LobbyScreen              from '../screens/LobbyScreen';
 import GamingChallengesScreen   from '../screens/GamingChallengesScreen';
 import PhysicalChallengesScreen from '../screens/PhysicalChallengesScreen';
@@ -25,38 +24,23 @@ import DuoLobbyScreen           from '../screens/DuoLobbyScreen';
 import CategoryPickerModal      from '../components/CategoryPickerModal';
 
 /* ══════════════════════════════════════
-   OPTIONS DE TRANSITION — FLUIDES
+   OPTIONS TRANSITIONS FLUIDES
 ══════════════════════════════════════ */
 const STACK_BASE = {
-  headerShown: false,
-  gestureEnabled: true,
+  headerShown:      false,
+  gestureEnabled:   true,
   gestureDirection: 'horizontal',
-  contentStyle: { backgroundColor: '#080A0F' },
+  contentStyle:     { backgroundColor: '#080A0F' },
 };
 
-const SLIDE = {
-  ...STACK_BASE,
-  animation: 'slide_from_right',
-  animationDuration: 180,   // ✅ 280 → 180ms
-};
-
-const SLIDE_UP = {
-  ...STACK_BASE,
-  animation: 'slide_from_bottom',
-  animationDuration: 200,   // ✅ 320 → 200ms
-};
-
-const FADE = {
-  ...STACK_BASE,
-  animation: 'fade',
-  animationDuration: 180,   // ✅ 400 → 180ms
-};
+const SLIDE    = { ...STACK_BASE, animation: 'slide_from_right',  animationDuration: 180 };
+const SLIDE_UP = { ...STACK_BASE, animation: 'slide_from_bottom', animationDuration: 200 };
+const FADE     = { ...STACK_BASE, animation: 'fade',              animationDuration: 180 };
+const FADE_LOCK= { ...FADE,       gestureEnabled: false };
 
 /* ══════════════════════════════════════
-   STACKS DE NAVIGATION
+   STACKS
 ══════════════════════════════════════ */
-
-// ── HOME STACK ──
 const HomeStack = createNativeStackNavigator();
 function HomeStackScreen() {
   return (
@@ -66,70 +50,38 @@ function HomeStackScreen() {
       <HomeStack.Screen name="DefiSelect"   component={DefiSelectScreen}         />
       <HomeStack.Screen name="Config"       component={ConfigScreen}    options={SLIDE_UP} />
       <HomeStack.Screen name="Live"         component={LiveScreen}      options={FADE}     />
-      <HomeStack.Screen name="Result"       component={ResultScreen}    options={{ ...FADE, gestureEnabled: false }} />
-      <HomeStack.Screen name="PhysicalMain" component={PhysicalChallengesScreen} />
+      <HomeStack.Screen name="Result"       component={ResultScreen}    options={FADE_LOCK}/>
+      <HomeStack.Screen name="PhysicalChallenges" component={PhysicalChallengesScreen} />
     </HomeStack.Navigator>
   );
 }
 
-// ── GAMING STACK ──
-const GamingStack = createNativeStackNavigator();
-function GamingStackScreen() {
-  return (
-    <GamingStack.Navigator screenOptions={SLIDE}>
-      <GamingStack.Screen name="GamingMain" component={GamingChallengesScreen} />
-      <GamingStack.Screen name="DefiSelect" component={DefiSelectScreen}       />
-      <GamingStack.Screen name="Config"     component={ConfigScreen}   options={SLIDE_UP} />
-      <GamingStack.Screen name="Live"       component={LiveScreen}     options={FADE}     />
-      <GamingStack.Screen name="Result"     component={ResultScreen}   options={{ ...FADE, gestureEnabled: false }} />
-    </GamingStack.Navigator>
-  );
-}
-
-// ── PHYSIQUE STACK ──
-const PhysiqueStack = createNativeStackNavigator();
-function PhysiqueStackScreen() {
-  return (
-    <PhysiqueStack.Navigator screenOptions={SLIDE}>
-      <PhysiqueStack.Screen name="PhysicalMain" component={PhysicalChallengesScreen} />
-      <PhysiqueStack.Screen name="DefiSelect"   component={DefiSelectScreen}         />
-      <PhysiqueStack.Screen name="Config"       component={ConfigScreen}    options={SLIDE_UP} />
-      <PhysiqueStack.Screen name="Live"         component={LiveScreen}      options={FADE}     />
-      <PhysiqueStack.Screen name="Result"       component={ResultScreen}    options={{ ...FADE, gestureEnabled: false }} />
-    </PhysiqueStack.Navigator>
-  );
-}
-
-// ── HISTO STACK ──
 const HistoStack = createNativeStackNavigator();
 function HistoStackScreen() {
   return (
     <HistoStack.Navigator screenOptions={SLIDE}>
-      <HistoStack.Screen name="HistoryMain" component={HistoryScreen} />
-      {/* DefiSelect accessible depuis l'historique aussi */}
+      <HistoStack.Screen name="HistoryMain" component={HistoryScreen}    />
       <HistoStack.Screen name="DefiSelect"  component={DefiSelectScreen} />
       <HistoStack.Screen name="Config"      component={ConfigScreen}    options={SLIDE_UP} />
       <HistoStack.Screen name="Live"        component={LiveScreen}      options={FADE}     />
-      <HistoStack.Screen name="Result"      component={ResultScreen}    options={{ ...FADE, gestureEnabled: false }} />
+      <HistoStack.Screen name="Result"      component={ResultScreen}    options={FADE_LOCK}/>
     </HistoStack.Navigator>
   );
 }
 
-// ── DUEL STACK ──
 const DuelStack = createNativeStackNavigator();
 function DuelStackScreen() {
   return (
     <DuelStack.Navigator screenOptions={SLIDE}>
-      <DuelStack.Screen name="DuoLobbyMain" component={DuoLobbyScreen} />
-      <DuelStack.Screen name="DefiSelect"   component={DefiSelectScreen} />
-      <DuelStack.Screen name="Config"       component={ConfigScreen}    options={SLIDE_UP} />
-      <DuelStack.Screen name="Live"         component={LiveScreen}      options={FADE}     />
-      <DuelStack.Screen name="Result"       component={ResultScreen}    options={{ ...FADE, gestureEnabled: false }} />
+      <DuelStack.Screen name="DuoLobbyMain" component={DuoLobbyScreen}   />
+      <DuelStack.Screen name="DefiSelect"   component={DefiSelectScreen}  />
+      <DuelStack.Screen name="Config"       component={ConfigScreen}     options={SLIDE_UP} />
+      <DuelStack.Screen name="Live"         component={LiveScreen}       options={FADE}     />
+      <DuelStack.Screen name="Result"       component={ResultScreen}     options={FADE_LOCK}/>
     </DuelStack.Navigator>
   );
 }
 
-// ── WALLET STACK ──
 const WalletStack = createNativeStackNavigator();
 function WalletStackScreen() {
   return (
@@ -139,7 +91,6 @@ function WalletStackScreen() {
   );
 }
 
-// ── PROFILE STACK ──
 const ProfileStack = createNativeStackNavigator();
 function ProfileStackScreen() {
   return (
@@ -150,7 +101,7 @@ function ProfileStackScreen() {
 }
 
 /* ══════════════════════════════════════
-   TAB NAVIGATOR
+   TABS CONFIG
 ══════════════════════════════════════ */
 const Tab = createBottomTabNavigator();
 
@@ -162,120 +113,108 @@ const TABS = [
   { name: 'ProfileTab', label: 'Profil',     Icon: User,   color: T.gold    },
 ];
 
-const LEFT_TABS  = TABS.slice(0, 2); // Accueil, Historique
-const RIGHT_TABS = TABS.slice(3, 5); // Wallet, Profil
+const LEFT_TABS  = TABS.slice(0, 2);
+const RIGHT_TABS = TABS.slice(3, 5);
 
 /* ══ BOUTON CENTRAL ⚡ ══ */
 function CenterButton({ onPress }) {
-  const scaleAnim  = useRef(new Animated.Value(1)).current;
-  const glowAnim   = useRef(new Animated.Value(0)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const scale  = useRef(new Animated.Value(1)).current;
+  const glow   = useRef(new Animated.Value(0)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 1600, useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 1600, useNativeDriver: true }),
+        Animated.timing(glow, { toValue: 1, duration: 1800, useNativeDriver: true }),
+        Animated.timing(glow, { toValue: 0, duration: 1800, useNativeDriver: true }),
       ])
     ).start();
   }, []);
 
-  const glowOpacity = glowAnim.interpolate({
-    inputRange: [0, 1], outputRange: [0.12, 0.28],
-  });
-  const spin = rotateAnim.interpolate({
-    inputRange: [0, 1], outputRange: ['0deg', '20deg'],
-  });
-
-  const handlePressIn = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Animated.parallel([
-      Animated.spring(scaleAnim,  { toValue: 0.88, tension: 300, friction: 7, useNativeDriver: true }),
-      Animated.timing(rotateAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
-    ]).start();
-  };
-
-  const handlePressOut = () => {
-    // ✅ Action IMMÉDIATE avant animation de retour
-    onPress?.();
-    Animated.parallel([
-      Animated.spring(scaleAnim,  { toValue: 1, tension: 200, friction: 6, useNativeDriver: true }),
-      Animated.timing(rotateAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
-    ]).start();
-  };
+  const glowOp = glow.interpolate({ inputRange: [0, 1], outputRange: [0.1, 0.26] });
+  const spin   = rotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '20deg'] });
 
   return (
     <TouchableOpacity
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
+      onPressIn={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        Animated.parallel([
+          Animated.spring(scale,  { toValue: 0.88, tension: 300, friction: 7, useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: 1, duration: 150, useNativeDriver: true }),
+        ]).start();
+      }}
+      onPressOut={() => {
+        // ✅ Action IMMÉDIATE
+        onPress?.();
+        Animated.parallel([
+          Animated.spring(scale,  { toValue: 1, tension: 200, friction: 6, useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: 0, duration: 150, useNativeDriver: true }),
+        ]).start();
+      }}
       activeOpacity={1}
       style={styles.centerOuter}
     >
-      <Animated.View style={[styles.centerBtn, { transform: [{ scale: scaleAnim }] }]}>
-        <Animated.View style={[styles.centerGlow, { opacity: glowOpacity }]} />
+      <Animated.View style={[styles.centerBtn, { transform: [{ scale }] }]}>
+        <Animated.View style={[styles.centerGlow, { opacity: glowOp }]} />
         <Animated.Text style={[styles.centerEmoji, { transform: [{ rotate: spin }] }]}>
-          ⚡
+          {'⚡'}
         </Animated.Text>
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
-/* ══ TAB ITEM avec rebond ══ */
+/* ══ TAB ITEM ══ */
 function TabItem({ tab, focused, onPress }) {
-  const bounceAnim = useRef(new Animated.Value(1)).current;
-  const dotAnim    = useRef(new Animated.Value(focused ? 1 : 0)).current;
-  // ✅ bgAnim DOIT être useNativeDriver: false (backgroundColor n'est pas natif)
-  const bgAnim     = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const bounce = useRef(new Animated.Value(1)).current;
+  const dot    = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  // ✅ bg séparé avec useNativeDriver: false (backgroundColor)
+  const bg     = useRef(new Animated.Value(focused ? 1 : 0)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(dotAnim, {
-        toValue: focused ? 1 : 0,
-        duration: 180,
-        useNativeDriver: true,   // ✅ opacity + transform = natif OK
-      }),
-      Animated.timing(bgAnim, {
-        toValue: focused ? 1 : 0,
-        duration: 180,
-        useNativeDriver: false,  // ✅ backgroundColor = NON natif
-      }),
-    ]).start();
+    // ✅ Animations séparées — pas de mix natif/non-natif dans parallel
+    Animated.timing(dot, {
+      toValue: focused ? 1 : 0, duration: 180, useNativeDriver: true,
+    }).start();
+    Animated.timing(bg, {
+      toValue: focused ? 1 : 0, duration: 180, useNativeDriver: false,
+    }).start();
   }, [focused]);
 
   const { Icon, label, color } = tab;
 
-  const iconBg = bgAnim.interpolate({
+  const iconBg = bg.interpolate({
     inputRange:  [0, 1],
     outputRange: ['rgba(0,0,0,0)', color + '18'],
   });
 
-  const handlePress = () => {
-    // ✅ 1. Action IMMÉDIATE
-    Haptics.selectionAsync();
-    onPress?.();
-
-    // ✅ 2. Animation APRÈS (cosmétique)
-    Animated.sequence([
-      Animated.timing(bounceAnim, { toValue: 0.78, duration: 60,  useNativeDriver: true }),
-      Animated.spring(bounceAnim, { toValue: 1.12, tension: 400, friction: 5, useNativeDriver: true }),
-      Animated.spring(bounceAnim, { toValue: 1,    tension: 300, friction: 8, useNativeDriver: true }),
-    ]).start();
-  };
-
   return (
     <TouchableOpacity
-      onPress={handlePress}
+      onPress={() => {
+        // ✅ 1. Action immédiate
+        Haptics.selectionAsync();
+        onPress?.();
+        // ✅ 2. Animation après
+        Animated.sequence([
+          Animated.timing(bounce, { toValue: 0.78, duration: 55, useNativeDriver: true }),
+          Animated.spring(bounce, { toValue: 1.12, tension: 400, friction: 5, useNativeDriver: true }),
+          Animated.spring(bounce, { toValue: 1,    tension: 300, friction: 8, useNativeDriver: true }),
+        ]).start();
+      }}
       activeOpacity={1}
       style={styles.tabItem}
     >
-      {/* ✅ Deux Animated.View séparés : un pour bg (non-natif), un pour scale (natif) */}
+      {/*
+        ✅ 2 Animated.View séparés :
+        - Externe : backgroundColor (useNativeDriver: false)
+        - Interne : scale/transform (useNativeDriver: true)
+      */}
       <Animated.View style={[
         styles.tabIconWrap,
         focused && { borderColor: color + '30', borderWidth: 1 },
-        { backgroundColor: iconBg }, // non-natif
+        { backgroundColor: iconBg },
       ]}>
-        <Animated.View style={{ transform: [{ scale: bounceAnim }] }}> {/* natif */}
+        <Animated.View style={{ transform: [{ scale: bounce }] }}>
           <Icon
             size={20}
             color={focused ? color : T.muted}
@@ -288,9 +227,9 @@ function TabItem({ tab, focused, onPress }) {
         styles.tabLabel,
         {
           color:   focused ? color : T.muted,
-          opacity: dotAnim,
+          opacity: dot,
           transform: [{
-            scale: dotAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }),
+            scale: dot.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }),
           }],
         },
       ]}>
@@ -299,18 +238,14 @@ function TabItem({ tab, focused, onPress }) {
 
       <Animated.View style={[
         styles.tabDot,
-        {
-          backgroundColor: color,
-          opacity:   dotAnim,
-          transform: [{ scale: dotAnim }],
-        },
+        { backgroundColor: color, opacity: dot, transform: [{ scale: dot }] },
       ]} />
     </TouchableOpacity>
   );
 }
 
 /* ══ CUSTOM TAB BAR ══ */
-function CustomTabBar({ state, descriptors, navigation }) {
+function CustomTabBar({ state, navigation }) {
   const [showPicker, setShowPicker] = useState(false);
   const barSlide = useRef(new Animated.Value(80)).current;
   const barFade  = useRef(new Animated.Value(0)).current;
@@ -318,33 +253,23 @@ function CustomTabBar({ state, descriptors, navigation }) {
   useEffect(() => {
     Animated.parallel([
       Animated.spring(barSlide, {
-        toValue: 0, tension: 60, friction: 13,
-        delay: 300, useNativeDriver: true,
+        toValue: 0, tension: 60, friction: 13, delay: 280, useNativeDriver: true,
       }),
       Animated.timing(barFade, {
-        toValue: 1, duration: 300,
-        delay: 300, useNativeDriver: true,
+        toValue: 1, duration: 280, delay: 280, useNativeDriver: true,
       }),
     ]).start();
   }, []);
 
-  const navigateTab = (tabName, routeKey, isFocused) => {
-    if (isFocused) return; // ✅ Évite re-render inutile
-    const event = navigation.emit({
-      type: 'tabPress', target: routeKey, canPreventDefault: true,
-    });
-    if (!event.defaultPrevented) {
-      navigation.navigate(tabName);
-    }
+  const goTo = (name, key, focused) => {
+    if (focused) return;
+    const ev = navigation.emit({ type: 'tabPress', target: key, canPreventDefault: true });
+    if (!ev.defaultPrevented) navigation.navigate(name);
   };
 
   return (
     <>
-      {/*
-        ✅ CategoryPickerModal monté ICI dans CustomTabBar
-        → accessible depuis TOUS les onglets
-        → utilise navigate() de navigationRef pour traverser les stacks
-      */}
+      {/* ✅ Modal globale — accessible depuis tous les tabs */}
       <CategoryPickerModal
         visible={showPicker}
         onClose={() => setShowPicker(false)}
@@ -356,46 +281,35 @@ function CustomTabBar({ state, descriptors, navigation }) {
       ]}>
         <View style={styles.tabBar}>
 
-          {/* Gauche : Accueil + Historique */}
           <View style={styles.tabSide}>
-            {LEFT_TABS.map((tab) => {
-              const routeIndex = state.routes.findIndex(r => r.name === tab.name);
-              if (routeIndex === -1) return null;
-              const focused = state.index === routeIndex;
+            {LEFT_TABS.map(tab => {
+              const idx     = state.routes.findIndex(r => r.name === tab.name);
+              if (idx === -1) return null;
+              const focused = state.index === idx;
               return (
                 <TabItem
-                  key={`left_${tab.name}`}
+                  key={tab.name}
                   tab={tab}
                   focused={focused}
-                  onPress={() => navigateTab(
-                    tab.name,
-                    state.routes[routeIndex].key,
-                    focused,
-                  )}
+                  onPress={() => goTo(tab.name, state.routes[idx].key, focused)}
                 />
               );
             })}
           </View>
 
-          {/* Centre ⚡ — ouvre la modal catégorie */}
           <CenterButton onPress={() => setShowPicker(true)} />
 
-          {/* Droite : Wallet + Profil */}
           <View style={styles.tabSide}>
-            {RIGHT_TABS.map((tab) => {
-              const routeIndex = state.routes.findIndex(r => r.name === tab.name);
-              if (routeIndex === -1) return null;
-              const focused = state.index === routeIndex;
+            {RIGHT_TABS.map(tab => {
+              const idx     = state.routes.findIndex(r => r.name === tab.name);
+              if (idx === -1) return null;
+              const focused = state.index === idx;
               return (
                 <TabItem
-                  key={`right_${tab.name}`}
+                  key={tab.name}
                   tab={tab}
                   focused={focused}
-                  onPress={() => navigateTab(
-                    tab.name,
-                    state.routes[routeIndex].key,
-                    focused,
-                  )}
+                  onPress={() => goTo(tab.name, state.routes[idx].key, focused)}
                 />
               );
             })}
@@ -411,40 +325,24 @@ function CustomTabBar({ state, descriptors, navigation }) {
 export default function MainTabs() {
   return (
     <Tab.Navigator
-      tabBar={(props) => <CustomTabBar {...props} />}
+      tabBar={props => <CustomTabBar {...props} />}
       screenOptions={{ headerShown: false }}
-      // ✅ Pre-rend tous les tabs = 0 délai au premier switch
       initialRouteName="HomeTab"
+      // ✅ PAS de lazy: false global — évite de charger tous les screens au démarrage
+      // ce qui causait "Text strings must be rendered within a <Text> component" × 4
     >
-      <Tab.Screen
-        name="HomeTab"
-        component={HomeStackScreen}
-        options={{ lazy: false }}  // ✅ pré-chargé
-      />
-      <Tab.Screen
-        name="HistoTab"
-        component={HistoStackScreen}
-        options={{ lazy: false }}  // ✅ pré-chargé
-      />
-      <Tab.Screen
-        name="DuelTab"
-        component={DuelStackScreen}
-        options={{ lazy: false }}  // ✅ pré-chargé
-      />
-      <Tab.Screen
-        name="WalletTab"
-        component={WalletStackScreen}
-        options={{ lazy: false }}  // ✅ pré-chargé
-      />
-      <Tab.Screen
-        name="ProfileTab"
-        component={ProfileStackScreen}
-        options={{ lazy: false }}  // ✅ pré-chargé
-      />
+      <Tab.Screen name="HomeTab"    component={HomeStackScreen}   />
+      <Tab.Screen name="HistoTab"   component={HistoStackScreen}  />
+      <Tab.Screen name="DuelTab"    component={DuelStackScreen}   />
+      <Tab.Screen name="WalletTab"  component={WalletStackScreen} />
+      <Tab.Screen name="ProfileTab" component={ProfileStackScreen}/>
     </Tab.Navigator>
   );
 }
 
+/* ══════════════════════════════════════
+   STYLES
+══════════════════════════════════════ */
 const styles = StyleSheet.create({
   tabBarContainer: {
     position: 'absolute', bottom: 20, left: 16, right: 16,
@@ -459,32 +357,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.6, shadowRadius: 28, elevation: 22,
   },
 
-  tabSide: {
-    flex: 1, flexDirection: 'row', justifyContent: 'space-around',
-  },
-  tabItem: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 4, position: 'relative',
-  },
-  tabIconWrap: {
-    width: 40, height: 40, borderRadius: 13,
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: 2,
-  },
-  tabLabel: {
-    fontFamily: 'Inter-Regular', fontSize: 9,
-    letterSpacing: 0.3, fontWeight: '600', marginTop: 1,
-  },
-  tabDot: {
-    position: 'absolute', bottom: -2,
-    width: 4, height: 4, borderRadius: 2,
-  },
+  tabSide:     { flex: 1, flexDirection: 'row', justifyContent: 'space-around' },
+  tabItem:     { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4, position: 'relative' },
+  tabIconWrap: { width: 40, height: 40, borderRadius: 13, justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
+  tabLabel:    { fontFamily: 'Inter-Regular', fontSize: 9, letterSpacing: 0.3, fontWeight: '600', marginTop: 1 },
+  tabDot:      { position: 'absolute', bottom: -2, width: 4, height: 4, borderRadius: 2 },
 
-  centerOuter: {
-    width: 66, height: 66,
-    alignItems: 'center', justifyContent: 'center',
-    marginTop: -24,
-  },
+  centerOuter: { width: 66, height: 66, alignItems: 'center', justifyContent: 'center', marginTop: -24 },
   centerBtn: {
     width: 62, height: 62, borderRadius: 31,
     backgroundColor: '#0E1015',
@@ -494,9 +373,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.75, shadowRadius: 18, elevation: 18,
     overflow: 'hidden', position: 'relative',
   },
-  centerGlow: {
-    position: 'absolute', width: 110, height: 110,
-    borderRadius: 55, backgroundColor: T.gaming,
-  },
+  centerGlow:  { position: 'absolute', width: 110, height: 110, borderRadius: 55, backgroundColor: T.gaming },
   centerEmoji: { fontSize: 26 },
 });

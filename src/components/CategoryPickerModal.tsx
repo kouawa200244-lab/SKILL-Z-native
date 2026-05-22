@@ -33,7 +33,7 @@ const CATEGORIES = [
     emoji:  '💪',
     Icon:   Dumbbell,
     color:  T.physique,
-    route:  'DefiSelect',
+    route:  'PhysicalChallenges',
     params: { gameKey: 'physique' },
   },
 ];
