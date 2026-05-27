@@ -30,64 +30,96 @@ const SLIDER_W = W - 48;
    SLIDER CUSTOM
 ══════════════════════════════════════ */
 function CustomSlider({ value, onValueChange, min, max, color }) {
-  const sliderRef  = useRef(null);
-  const fillAnim   = useRef(new Animated.Value((value - min) / (max - min))).current;
-  const thumbScale = useRef(new Animated.Value(1)).current;
+  const sliderX     = useRef(0);   // ← position X absolue du slider sur l'écran
+  const sliderWidth = useRef(SLIDER_W);
+  const fillAnim    = useRef(new Animated.Value((value - min) / (max - min))).current;
+  const thumbScale  = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.spring(fillAnim, {
-      toValue: (value - min) / (max - min),
-      tension: 80, friction: 8, useNativeDriver: false,
+      toValue:  (value - min) / (max - min),
+      tension:  80,
+      friction: 8,
+      useNativeDriver: false,
     }).start();
   }, [value]);
 
   const fillWidth = fillAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, SLIDER_W],
+    inputRange:  [0, 1],
+    outputRange: [0, sliderWidth.current],
   });
-
   const thumbLeft = fillAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, SLIDER_W - 20],
+    inputRange:  [0, 1],
+    outputRange: [0, sliderWidth.current - 22],
   });
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder:  () => true,
-      onPanResponderGrant: () => {
+
+      onPanResponderGrant: (e) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        Animated.spring(thumbScale, { toValue: 1.3, tension: 200, useNativeDriver: true }).start();
-      },
-      onPanResponderMove: (_, gesture) => {
-        const ratio   = Math.max(0, Math.min(1, gesture.moveX / SLIDER_W));
-        const newVal  = Math.round((min + ratio * (max - min)) / 100) * 100;
+        Animated.spring(thumbScale, {
+          toValue: 1.3, tension: 200, friction: 6, useNativeDriver: true,
+        }).start();
+
+        // ✅ Calcul depuis la position du touch DANS le slider
+        const touchX = e.nativeEvent.pageX - sliderX.current;
+        const ratio  = Math.max(0, Math.min(1, touchX / sliderWidth.current));
+        const newVal = Math.round((min + ratio * (max - min)) / 100) * 100;
         onValueChange(Math.max(min, Math.min(max, newVal)));
       },
+
+      onPanResponderMove: (e) => {
+        // ✅ pageX - position absolue du slider = position relative
+        const touchX = e.nativeEvent.pageX - sliderX.current;
+        const ratio  = Math.max(0, Math.min(1, touchX / sliderWidth.current));
+        const newVal = Math.round((min + ratio * (max - min)) / 100) * 100;
+        onValueChange(Math.max(min, Math.min(max, newVal)));
+      },
+
       onPanResponderRelease: () => {
         Haptics.selectionAsync();
-        Animated.spring(thumbScale, { toValue: 1, tension: 200, useNativeDriver: true }).start();
+        Animated.spring(thumbScale, {
+          toValue: 1, tension: 200, friction: 8, useNativeDriver: true,
+        }).start();
       },
     })
   ).current;
 
   return (
-    <View style={{ paddingHorizontal: 0, marginBottom: 6 }}>
+    <View style={{ marginBottom: 6 }}>
       <View
-        style={[styles.sliderTrack]}
+        style={styles.sliderTrack}
         {...panResponder.panHandlers}
+        onLayout={(e) => {
+          // ✅ Mesure la position absolue du slider à l'écran
+          e.target.measure((_x, _y, width, _height, pageX) => {
+            sliderX.current     = pageX;
+            sliderWidth.current = width;
+          });
+        }}
       >
         <View style={styles.sliderTrackBg} />
-        <Animated.View style={[styles.sliderFill, { width: fillWidth, backgroundColor: color }]} />
+
         <Animated.View style={[
-          styles.sliderThumb,
-          {
-            left: thumbLeft,
-            borderColor: color,
-            transform: [{ scale: thumbScale }],
-            shadowColor: color,
-          }
+          styles.sliderFill,
+          { width: fillWidth, backgroundColor: color }
         ]} />
+
+        {/* Outer : position left (non-natif) */}
+        <Animated.View style={[styles.sliderThumbOuter, { left: thumbLeft }]}>
+          {/* Inner : scale (natif) */}
+          <Animated.View style={[
+            styles.sliderThumb,
+            {
+              borderColor: color,
+              shadowColor: color,
+              transform:   [{ scale: thumbScale }],
+            }
+          ]} />
+        </Animated.View>
       </View>
     </View>
   );

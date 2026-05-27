@@ -36,6 +36,17 @@ const CATEGORIES = [
     route:  'PhysicalChallenges',
     params: { gameKey: 'physique' },
   },
+
+  {
+    key:    'duel',
+    label:  'DUEL',
+    sub:    'Affronte un ami sur un défi de ton choix',
+    emoji:  '⚔️',
+    Icon:   Gamepad2,
+    color:  '#A855F7',
+    route:  'DuoLobby',
+    params: {},
+  },
 ];
 
 export default function CategoryPickerModal({ visible, onClose }) {
@@ -100,8 +111,19 @@ export default function CategoryPickerModal({ visible, onClose }) {
     close();
 
     // 3. Naviguer IMMÉDIATEMENT (pas de setTimeout, pas d'attente animation)
-    navigate(cat.route, cat.params);
-  };
+    const CATEGORIES = [
+  {
+    key:    'gaming',
+    route:  'DuelPick',   // ✅ bon nom
+    params: {},
+  },
+  {
+    key:    'physique',
+    route:  'DuelPick',   // ✅ même screen, filtre physique auto
+    params: { defaultCategory: 'physique' },
+  },
+];
+};
 
   const sheetY = Animated.add(translateY, dragY);
 

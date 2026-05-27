@@ -46,6 +46,27 @@ export async function fetchWallet(userId) {
     return null;
   }
 }
+/* ── Créditer gain après victoire ── */
+export async function creditWin({ userId, gain, defiNom, mise, cote }) {
+  const { data, error } = await supabase.rpc('deposit_funds', {
+    p_user_id: userId,
+    p_amount:  gain,
+    p_label:   `Victoire — ${defiNom} ×${cote}`,
+  });
+
+  if (error) throw new Error(error.message);
+  if (!data?.success) throw new Error(data?.error || 'Erreur crédit');
+
+  // Mettre à jour le cache local
+  const stored = await AsyncStorage.getItem('skillz_user');
+  if (stored) {
+    const u = JSON.parse(stored);
+    u.balance = data.balance_new;
+    await AsyncStorage.setItem('skillz_user', JSON.stringify(u));
+  }
+
+  return { balanceNew: data.balance_new };
+}
 
 // Mettre à jour le solde
 export async function updateBalance(userId, newBalance) {

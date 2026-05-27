@@ -1,54 +1,52 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { ActivityIndicator, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import AuthScreen   from './src/screens/AuthScreen';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useFonts } from 'expo-font';
+import { View, ActivityIndicator } from 'react-native';
+import { Rajdhani_700Bold } from '@expo-google-fonts/rajdhani';
+import { Inter_400Regular } from '@expo-google-fonts/inter';
+import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
 import AppNavigator from './src/navigation/AppNavigator';
-import { T }        from './src/utils/designTokens';
+import AuthScreen from './src/screens/AuthScreen';
 import { navigationRef } from './src/utils/navigationRef';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { T } from './src/utils/designTokens';
 
 export default function App() {
-  const [user,    setUser]    = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [ready, setReady] = useState(false);
+
+  // Un seul useFonts, avec toutes les polices dedans
+  const [fontsLoaded] = useFonts({
+    'Rajdhani-Bold': Rajdhani_700Bold,
+    'Inter-Regular': Inter_400Regular,
+    'JetBrainsMono-Regular': JetBrainsMono_400Regular,
+  });
 
   useEffect(() => {
-    AsyncStorage.getItem('skillz_user')
-      .then(s => { if (s) setUser(JSON.parse(s)); })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    AsyncStorage.getItem('skillz_user').then(s => {
+      if (s) setUser(JSON.parse(s));
+      setReady(true);
+    });
   }, []);
 
-  const handleLogin  = async (u: any) => {
-    await AsyncStorage.setItem('skillz_user', JSON.stringify(u));
-    setUser(u);
-  };
-
-  const handleLogout = async () => {
-    await AsyncStorage.removeItem('skillz_user');
-    setUser(null);
-  };
-
-  if (loading) {
+  if (!ready || !fontsLoaded) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#080A0F' }}>
-        <ActivityIndicator size="large" color={T.gold} />
+      <View style={{ flex: 1, backgroundColor: T.bg, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={T.gold} size="large" />
       </View>
     );
   }
 
   return (
-    <NavigationContainer
-      ref={navigationRef}           // ✅ ref branché ici
-      onReady={() => {
-        // Le ref est maintenant prêt — log pour debug
-        console.log('[Nav] NavigationContainer ready');
-      }}
-    >
-      {user
-        ? <AppNavigator onLogout={handleLogout} />
-        : <AuthScreen onLogin={handleLogin} />
-      }
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <NavigationContainer ref={navigationRef}>
+        {user
+          ? <AppNavigator />
+          : <AuthScreen onLogin={(u) => setUser(u)} />
+        }
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

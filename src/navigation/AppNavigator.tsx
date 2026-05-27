@@ -12,78 +12,56 @@ import ResultScreen     from '../screens/ResultScreen';
 import DuoLobbyScreen   from '../screens/DuoLobbyScreen';
 import DuelActiveScreen from '../screens/DuelActiveScreen';
 import DuoConfigScreen  from '../screens/DuoConfigScreen';
+import DuelPickScreen   from '../screens/DuelPickScreen';
 import HistoryScreen    from '../screens/HistoryScreen';
 
 const Stack = createNativeStackNavigator();
 
-/* ── Options partagées ultra-fluides ── */
-const BASE = {
-  headerShown:  false,
-  gestureEnabled: true,
-  gestureDirection: 'horizontal',
-  contentStyle: { backgroundColor: '#080A0F' },
-};
+/* ── Presets d'animation ── */
+const RIGHT  = { headerShown: false, animation: 'slide_from_right',   animationDuration: 220 };
+const BOTTOM = { headerShown: false, animation: 'slide_from_bottom',  animationDuration: 260 };
+const FADE   = { headerShown: false, animation: 'fade',               animationDuration: 250 };
+const NONE   = { headerShown: false, animation: 'none' };
 
-/* ── Slide droite — navigation standard ── */
-const SLIDE_RIGHT = {
-  ...BASE,
-  animation:         'slide_from_right',
-  animationDuration: 180,   // ✅ réduit de 280 → 180ms
-};
-
-/* ── Slide bas — modals / config ── */
-const SLIDE_BOTTOM = {
-  ...BASE,
-  animation:         'slide_from_bottom',
-  animationDuration: 220,   // ✅ réduit de 320 → 220ms
-};
-
-/* ── Fade — écrans immersifs ── */
-const FADE = {
-  ...BASE,
-  animation:         'fade',
-  animationDuration: 200,   // ✅ réduit de 400 → 200ms
-};
-
-export default function AppNavigator({ onLogout }) {
+export default function AppNavigator() {
   return (
     <Stack.Navigator
       screenOptions={{
-        ...SLIDE_RIGHT,
-        // Fond sombre entre toutes les transitions
-        contentStyle: { backgroundColor: '#080A0F' },
+        headerShown:       false,
+        animation:         'slide_from_right',
+        animationDuration: 220,           // ✅ réduit pour moins de lag perçu
+        gestureEnabled:    true,
+        gestureDirection:  'horizontal',
+        contentStyle:      { backgroundColor: '#0B0E13' },
       }}
     >
-      {/* ── Tabs (entrée principale) ── */}
+      {/* ── Tabs ── */}
       <Stack.Screen
         name="MainTabs"
         component={MainTabs}
-        options={{ ...FADE, animationDuration: 250 }}
+        options={FADE}
       />
 
-      {/* ── Flow défi solo ── */}
-      <Stack.Screen name="GameSelect"  component={GameSelectScreen} options={SLIDE_RIGHT}  />
-      <Stack.Screen name="DefiSelect"  component={DefiSelectScreen} options={SLIDE_RIGHT}  />
-      <Stack.Screen name="Config"      component={ConfigScreen}     options={SLIDE_BOTTOM} />
-      
-      {/* ── Flow Duel 1v1 ── */}
-      <Stack.Screen name="DuelScreen"  component={DuoLobbyScreen}   options={SLIDE_RIGHT}  />
-      <Stack.Screen name="DuelCreate"  component={DuoConfigScreen}  options={SLIDE_BOTTOM} />
-      <Stack.Screen name="DuelLobby"   component={DuoLobbyScreen}   options={SLIDE_BOTTOM} />
-      <Stack.Screen name="DuelRoom"    component={DuelActiveScreen} options={SLIDE_BOTTOM} />
-      <Stack.Screen name="DuelActive"  component={DuelActiveScreen} options={FADE}         />
-      <Stack.Screen name="DuelJoin"    component={DuelActiveScreen} options={FADE}         />
-
-      {/* ── Live & Résultat ── */}
-      <Stack.Screen name="Live"        component={LiveScreen}       options={FADE}         />
+      {/* ── Solo ── */}
+      <Stack.Screen name="GameSelect"  component={GameSelectScreen}  options={RIGHT}  />
+      <Stack.Screen name="DefiSelect"  component={DefiSelectScreen}  options={RIGHT}  />
+      <Stack.Screen name="Config"      component={ConfigScreen}      options={BOTTOM} />
+      <Stack.Screen name="Live"        component={LiveScreen}        options={FADE}   />
       <Stack.Screen
         name="Result"
         component={ResultScreen}
         options={{ ...FADE, gestureEnabled: false }}
       />
 
+      {/* ── Duel ── */}
+      <Stack.Screen name="DuelPick"    component={DuelPickScreen}    options={RIGHT}  />
+      <Stack.Screen name="DuoConfig"  component={DuoConfigScreen}  options={BOTTOM} />
+      <Stack.Screen name="DuelLobby"   component={DuoLobbyScreen}   options={BOTTOM} />
+      <Stack.Screen name="DuelActive"    component={DuelActiveScreen}    options={FADE}   />
+      <Stack.Screen name="DuelJoin"    component={DuelActiveScreen}    options={FADE}   />
+
       {/* ── Historique ── */}
-      <Stack.Screen name="Historique"  component={HistoryScreen}    options={SLIDE_RIGHT}  />
+      <Stack.Screen name="Historique"  component={HistoryScreen}  options={RIGHT}  />
     </Stack.Navigator>
   );
 }

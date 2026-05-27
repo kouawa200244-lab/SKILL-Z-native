@@ -1,48 +1,29 @@
-import { createNavigationContainerRef, StackActions } from '@react-navigation/native';
+import { createNavigationContainerRef, CommonActions } from '@react-navigation/native';
 
 export const navigationRef = createNavigationContainerRef();
 
-/* ── Navigate robuste — attend que le ref soit prêt ── */
+/* ✅ navigate INSTANTANÉ — pas d'attente */
 export function navigate(name, params) {
-  if (!navigationRef.isReady()) {
-    // Retry après 100ms si pas encore prêt
-    setTimeout(() => navigate(name, params), 100);
-    return;
-  }
-  try {
-    navigationRef.navigate(name, params);
-  } catch (e) {
-    console.warn('[navigationRef] navigate error:', e.message);
-  }
-}
-
-export function push(name, params) {
-  if (!navigationRef.isReady()) {
-    setTimeout(() => push(name, params), 100);
-    return;
-  }
-  try {
-    navigationRef.dispatch(StackActions.push(name, params));
-  } catch (e) {
-    console.warn('[navigationRef] push error:', e.message);
+  if (navigationRef.isReady()) {
+    navigationRef.dispatch(
+      CommonActions.navigate({ name, params })
+    );
   }
 }
 
 export function goBack() {
   if (navigationRef.isReady() && navigationRef.canGoBack()) {
-    navigationRef.goBack();
+    navigationRef.dispatch(CommonActions.goBack());
   }
 }
 
-export function reset(state) {
+export function reset(routeName) {
   if (navigationRef.isReady()) {
-    navigationRef.reset(state);
+    navigationRef.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: routeName }],
+      })
+    );
   }
-}
-
-export function getCurrentRoute() {
-  if (navigationRef.isReady()) {
-    return navigationRef.getCurrentRoute();
-  }
-  return null;
 }

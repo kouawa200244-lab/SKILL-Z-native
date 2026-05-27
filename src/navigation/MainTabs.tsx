@@ -22,6 +22,8 @@ import ProfileScreen            from '../screens/ProfileScreen';
 import HistoryScreen            from '../screens/HistoryScreen';
 import DuoLobbyScreen           from '../screens/DuoLobbyScreen';
 import CategoryPickerModal      from '../components/CategoryPickerModal';
+import DuoConfigScreen          from '../screens/DuoConfigScreen';
+import DuelPickScreen           from '../screens/DuelPickScreen';
 
 /* ══════════════════════════════════════
    OPTIONS TRANSITIONS FLUIDES
@@ -52,6 +54,9 @@ function HomeStackScreen() {
       <HomeStack.Screen name="Live"         component={LiveScreen}      options={FADE}     />
       <HomeStack.Screen name="Result"       component={ResultScreen}    options={FADE_LOCK}/>
       <HomeStack.Screen name="PhysicalChallenges" component={PhysicalChallengesScreen} />
+      <HomeStack.Screen name="DuoConfig" component={DuoConfigScreen} />
+      <HomeStack.Screen name="DuoLobby" component={DuoLobbyScreen} />
+      <HomeStack.Screen name="DuelPick" component={DuelPickScreen} />
     </HomeStack.Navigator>
   );
 }
@@ -108,7 +113,7 @@ const Tab = createBottomTabNavigator();
 const TABS = [
   { name: 'HomeTab',    label: 'Accueil',    Icon: Home,   color: T.gold    },
   { name: 'HistoTab',   label: 'Historique', Icon: Clock,  color: T.gaming  },
-  { name: 'DuelTab',    label: 'Duels',      Icon: Swords, color: '#A855F7' },
+  { name: 'DuelLobby',  label: 'Duels',      Icon: Swords, color: '#A855F7' },
   { name: 'WalletTab',  label: 'Wallet',     Icon: Wallet, color: T.gold    },
   { name: 'ProfileTab', label: 'Profil',     Icon: User,   color: T.gold    },
 ];
@@ -245,31 +250,49 @@ function TabItem({ tab, focused, onPress }) {
 }
 
 /* ══ CUSTOM TAB BAR ══ */
-function CustomTabBar({ state, navigation }) {
+function CustomTabBar({ state, descriptors, navigation }) {
   const [showPicker, setShowPicker] = useState(false);
-  const barSlide = useRef(new Animated.Value(80)).current;
-  const barFade  = useRef(new Animated.Value(0)).current;
+  const barSlideAnim = useRef(new Animated.Value(100)).current;
+  const barFadeAnim  = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(barSlide, {
-        toValue: 0, tension: 60, friction: 13, delay: 280, useNativeDriver: true,
+      Animated.spring(barSlideAnim, {
+        toValue: 0, tension: 55, friction: 12, delay: 400, useNativeDriver: true,
       }),
-      Animated.timing(barFade, {
-        toValue: 1, duration: 280, delay: 280, useNativeDriver: true,
+      Animated.timing(barFadeAnim, {
+        toValue: 1, duration: 400, delay: 400, useNativeDriver: true,
       }),
     ]).start();
   }, []);
 
-  const goTo = (name, key, focused) => {
-    if (focused) return;
-    const ev = navigation.emit({ type: 'tabPress', target: key, canPreventDefault: true });
-    if (!ev.defaultPrevented) navigation.navigate(name);
+  const navigateTab = (tabName, routeKey, isFocused) => {
+    // ✅ Si c'est Home ET déjà sur Home → scroll en haut (no-op)
+    // ✅ Si c'est Home et ailleurs → toujours reset vers HomeTab
+    if (tabName === 'HomeTab') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      // Reset tout le stack ET revenir sur HomeTab
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'HomeTab' }],
+      });
+      return;
+    }
+
+    const event = navigation.emit({
+      type: 'tabPress', target: routeKey, canPreventDefault: true,
+    });
+    if (!isFocused && !event.defaultPrevented) {
+      navigation.navigate(tabName);
+    }
   };
+
+  const leftTabs  = TABS.slice(0, 2);
+  const rightTabs = TABS.slice(3, 5);
 
   return (
     <>
-      {/* ✅ Modal globale — accessible depuis tous les tabs */}
       <CategoryPickerModal
         visible={showPicker}
         onClose={() => setShowPicker(false)}
@@ -277,39 +300,45 @@ function CustomTabBar({ state, navigation }) {
 
       <Animated.View style={[
         styles.tabBarContainer,
-        { opacity: barFade, transform: [{ translateY: barSlide }] },
+        { opacity: barFadeAnim, transform: [{ translateY: barSlideAnim }] },
       ]}>
         <View style={styles.tabBar}>
 
+          {/* ── Gauche ── */}
           <View style={styles.tabSide}>
-            {LEFT_TABS.map(tab => {
-              const idx     = state.routes.findIndex(r => r.name === tab.name);
-              if (idx === -1) return null;
-              const focused = state.index === idx;
+            {leftTabs.map((tab) => {
+              const routeIndex = state.routes.findIndex(r => r.name === tab.name);
+              if (routeIndex === -1) return null;
+              const focused = state.index === routeIndex;
               return (
                 <TabItem
-                  key={tab.name}
+                  key={`left_${tab.name}`}
                   tab={tab}
                   focused={focused}
-                  onPress={() => goTo(tab.name, state.routes[idx].key, focused)}
+                  onPress={() => navigateTab(tab.name, state.routes[routeIndex].key, focused)}
                 />
               );
             })}
           </View>
 
-          <CenterButton onPress={() => setShowPicker(true)} />
+          {/* ── Centre ⚡ ── */}
+          <CenterButton onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            setShowPicker(true);
+          }} />
 
+          {/* ── Droite ── */}
           <View style={styles.tabSide}>
-            {RIGHT_TABS.map(tab => {
-              const idx     = state.routes.findIndex(r => r.name === tab.name);
-              if (idx === -1) return null;
-              const focused = state.index === idx;
+            {rightTabs.map((tab) => {
+              const routeIndex = state.routes.findIndex(r => r.name === tab.name);
+              if (routeIndex === -1) return null;
+              const focused = state.index === routeIndex;
               return (
                 <TabItem
-                  key={tab.name}
+                  key={`right_${tab.name}`}
                   tab={tab}
                   focused={focused}
-                  onPress={() => goTo(tab.name, state.routes[idx].key, focused)}
+                  onPress={() => navigateTab(tab.name, state.routes[routeIndex].key, focused)}
                 />
               );
             })}

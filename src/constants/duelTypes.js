@@ -18,3 +18,9 @@ export const DUEL_TYPES = {
   comeback:           { label: "Comeback",                  desc: "Remonter un handicap de 2 buts",                                 icon: TrendingUp, category: "scenario" },
   no_star_player:     { label: "No Star Player",            desc: "Interdit d'utiliser le meilleur joueur",                        icon: User,       category: "scenario" },
 };
+
+export function getDuelCondition(type) {
+  const duel = DUEL_TYPES[type];
+  if (!duel) return 'Condition inconnue';
+  return duel.desc || 'Condition du duel';
+}
