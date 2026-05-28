@@ -390,8 +390,8 @@ export default function DuelScreen() {
           <TouchableOpacity
             style={styles.createDuelBtn}
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
               navigate('DuelPick'); // ✅ FIX
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }}
             activeOpacity={0.85}
           >

@@ -240,6 +240,306 @@ export async function playBet(payload: BetPayload): Promise<BetResult> {
 }
 
 // ════════════════════════════════════════════════════════════
+// FONCTIONS DUEL
+// ════════════════════════════════════════════════════════════
+
+export async function createDuel(payload: {
+  challengerId: string;
+  sessionId?: string;
+  game: string;
+  defiId: string;
+  defiNom: string;
+  palier: string;
+  mise: number;
+  duelType: string;
+  handicap: number;
+  drawRule: string;
+}): Promise<{ success: boolean; duelId?: string; error?: string }> {
+  const {
+    challengerId, sessionId, game, defiId, defiNom,
+    palier, mise, duelType, handicap, drawRule,
+  } = payload;
+
+  try {
+    // 1. Vérifier le solde du challenger
+    const { data: wallet, error: walletError } = await supabase
+      .from('wallets')
+      .select('balance')
+      .eq('user_id', challengerId)
+      .single();
+
+    if (walletError || !wallet) {
+      return { success: false, error: 'Wallet introuvable' };
+    }
+
+    if (wallet.balance < mise) {
+      return { success: false, error: `Solde insuffisant. Tu as ${wallet.balance} F, mise requise: ${mise} F` };
+    }
+
+    // 2. Débiter la mise du challenger
+    const newBalance = wallet.balance - mise;
+    await supabase
+      .from('wallets')
+      .update({ balance: newBalance, updated_at: new Date().toISOString() })
+      .eq('user_id', challengerId);
+
+    // 3. Créer le duel
+    const { data: duel, error: duelError } = await supabase
+      .from('duels')
+      .insert({
+        challenger_id: challengerId,
+        session_id: sessionId || null,
+        game,
+        defi_id: defiId,
+        defi_nom: defiNom,
+        palier,
+        mise,
+        duel_type: duelType,
+        handicap,
+        draw_rule: drawRule,
+        status: 'open',
+        created_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+
+    if (duelError) {
+      // Rembourser si la création échoue
+      await supabase
+        .from('wallets')
+        .update({ balance: wallet.balance, updated_at: new Date().toISOString() })
+        .eq('user_id', challengerId);
+      return { success: false, error: 'Erreur création du duel' };
+    }
+
+    // 4. Logger la transaction
+    await supabase.from('transactions').insert({
+      user_id: challengerId,
+      type: 'bet_placed',
+      amount: -mise,
+      duel_id: duel.id,
+      metadata: { type: 'duel', defi_nom: defiNom },
+      created_at: new Date().toISOString(),
+    });
+
+    return { success: true, duelId: duel.id };
+
+  } catch (e: any) {
+    console.error('createDuel error:', e);
+    return { success: false, error: e.message || 'Erreur inattendue' };
+  }
+}
+
+export async function joinDuel(duelId: string, opponentId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Vérifier que le duel est toujours ouvert
+    const { data: duel, error: duelError } = await supabase
+      .from('duels')
+      .select('*')
+      .eq('id', duelId)
+      .single();
+
+    if (duelError || !duel) {
+      return { success: false, error: 'Duel introuvable' };
+    }
+
+    if (duel.status !== 'open') {
+      return { success: false, error: 'Ce duel n\'est plus disponible' };
+    }
+
+    if (duel.challenger_id === opponentId) {
+      return { success: false, error: 'Tu ne peux pas rejoindre ton propre duel' };
+    }
+
+    // Vérifier le solde de l'opposant
+    const { data: wallet, error: walletError } = await supabase
+      .from('wallets')
+      .select('balance')
+      .eq('user_id', opponentId)
+      .single();
+
+    if (walletError || !wallet) {
+      return { success: false, error: 'Wallet introuvable' };
+    }
+
+    if (wallet.balance < duel.mise) {
+      return { success: false, error: `Solde insuffisant. Tu as ${wallet.balance} F, mise requise: ${duel.mise} F` };
+    }
+
+    // Débiter la mise de l'opposant
+    const newBalance = wallet.balance - duel.mise;
+    await supabase
+      .from('wallets')
+      .update({ balance: newBalance, updated_at: new Date().toISOString() })
+      .eq('user_id', opponentId);
+
+    // Mettre à jour le duel
+    await supabase
+      .from('duels')
+      .update({
+        opponent_id: opponentId,
+        status: 'active',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', duelId);
+
+    // Logger la transaction
+    await supabase.from('transactions').insert({
+      user_id: opponentId,
+      type: 'bet_placed',
+      amount: -duel.mise,
+      duel_id: duelId,
+      metadata: { type: 'duel', defi_nom: duel.defi_nom },
+      created_at: new Date().toISOString(),
+    });
+
+    return { success: true };
+
+  } catch (e: any) {
+    console.error('joinDuel error:', e);
+    return { success: false, error: e.message || 'Erreur inattendue' };
+  }
+}
+
+export async function resolveDuel(
+  duelId: string,
+  winnerId: string,
+  isDraw: boolean = false,
+  drawRule: string = 'skillbet'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: duel, error: duelError } = await supabase
+      .from('duels')
+      .select('*')
+      .eq('id', duelId)
+      .single();
+
+    if (duelError || !duel) {
+      return { success: false, error: 'Duel introuvable' };
+    }
+
+    if (duel.status !== 'active') {
+      return { success: false, error: 'Ce duel ne peut pas être résolu' };
+    }
+
+    const pot = duel.mise * 2;
+
+    if (isDraw) {
+      if (drawRule === 'split') {
+        const refund = Math.round(duel.mise * 0.95);
+        // Rembourser les deux joueurs
+        for (const playerId of [duel.challenger_id, duel.opponent_id]) {
+          const { data: wallet } = await supabase
+            .from('wallets')
+            .select('balance')
+            .eq('user_id', playerId)
+            .single();
+          if (wallet) {
+            await supabase
+              .from('wallets')
+              .update({ balance: wallet.balance + refund, updated_at: new Date().toISOString() })
+              .eq('user_id', playerId);
+          }
+          await supabase.from('transactions').insert({
+            user_id: playerId,
+            type: 'refund',
+            amount: refund,
+            duel_id: duelId,
+            metadata: { type: 'duel_draw' },
+            created_at: new Date().toISOString(),
+          });
+        }
+      }
+      // Si drawRule === 'skillbet', SKILL'Z garde tout (aucun remboursement)
+
+      await supabase
+        .from('duels')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', duelId);
+
+      return { success: true };
+    }
+
+    // Un gagnant
+    const loserId = winnerId === duel.challenger_id ? duel.opponent_id : duel.challenger_id;
+
+    // Créditer le gagnant
+    const { data: winnerWallet } = await supabase
+      .from('wallets')
+      .select('balance')
+      .eq('user_id', winnerId)
+      .single();
+
+    if (winnerWallet) {
+      await supabase
+        .from('wallets')
+        .update({ balance: winnerWallet.balance + pot, updated_at: new Date().toISOString() })
+        .eq('user_id', winnerId);
+    }
+
+    await supabase.from('transactions').insert({
+      user_id: winnerId,
+      type: 'duel_win',
+      amount: pot,
+      duel_id: duelId,
+      metadata: { type: 'duel_win' },
+      created_at: new Date().toISOString(),
+    });
+
+    await supabase
+      .from('duels')
+      .update({
+        status: 'completed',
+        winner_id: winnerId,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', duelId);
+
+    return { success: true };
+
+  } catch (e: any) {
+    console.error('resolveDuel error:', e);
+    return { success: false, error: e.message || 'Erreur inattendue' };
+  }
+}
+
+export async function fetchOpenDuels(): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('duels')
+    .select('*')
+    .eq('status', 'open')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('fetchOpenDuels error:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+export async function fetchMyActiveDuels(userId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('duels')
+    .select('*')
+    .or(`challenger_id.eq.${userId},opponent_id.eq.${userId}`)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('fetchMyActiveDuels error:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// ════════════════════════════════════════════════════════════
 // FONCTIONS DE LECTURE
 // ════════════════════════════════════════════════════════════
 

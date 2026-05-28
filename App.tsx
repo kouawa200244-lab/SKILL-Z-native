@@ -12,6 +12,7 @@ import AuthScreen from './src/screens/AuthScreen';
 import { navigationRef } from './src/utils/navigationRef';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { T } from './src/utils/designTokens';
+import { LINKING_CONFIG } from './src/utils/deepLinking';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -40,13 +41,13 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer ref={navigationRef}>
-        {user
-          ? <AppNavigator />
-          : <AuthScreen onLogin={(u) => setUser(u)} />
-        }
-      </NavigationContainer>
-    </SafeAreaProvider>
+  <SafeAreaProvider>
+    <NavigationContainer
+      ref={navigationRef}
+      linking={LINKING_CONFIG}  // ✅ deep links activés
+    >
+      {user ? <AppNavigator /> : <AuthScreen onLogin={setUser} />}
+    </NavigationContainer>
+  </SafeAreaProvider>
   );
 }

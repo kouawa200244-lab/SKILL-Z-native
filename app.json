@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.skillz.app",
+      "associatedDomains": ["applinks:skillz.app"],
       "infoPlist": {
         "NSCameraUsageDescription": "SKILL'Z utilise la caméra pour analyser tes mouvements pendant les défis physiques et valider automatiquement tes performances.",
         "NSMicrophoneUsageDescription": "SKILL'Z utilise le microphone pour synchroniser les défis."
@@ -26,11 +27,20 @@
         "backgroundColor": "#0F1217"
       },
       "package": "com.skillz.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "skillz.app", "pathPrefix": "/defi" },
+            { "scheme": "skillz" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "permissions": [
         "CAMERA",
-        "RECORD_AUDIO",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "RECORD_AUDIO"
       ]
     },
     "web": {
@@ -38,13 +48,13 @@
     },
     "plugins": [
       "expo-font",
+      "expo-web-browser",
       [
         "expo-camera",
         {
           "cameraPermission": "SKILL'Z utilise la caméra pour valider tes défis physiques en analysant tes mouvements."
         }
-      ],
-      "expo-web-browser"
+      ]
     ],
     "extra": {
       "eas": {

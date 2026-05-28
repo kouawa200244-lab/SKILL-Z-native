@@ -14,6 +14,9 @@ import DuelActiveScreen from '../screens/DuelActiveScreen';
 import DuoConfigScreen  from '../screens/DuoConfigScreen';
 import DuelPickScreen   from '../screens/DuelPickScreen';
 import HistoryScreen    from '../screens/HistoryScreen';
+import DefiChallengeScreen from '../screens/DefiChallengeScreen';
+import ViralShareScreen    from '../screens/ViralShareScreen';
+import ViralResultScreen   from '../screens/ViralResultScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -59,6 +62,9 @@ export default function AppNavigator() {
       <Stack.Screen name="DuelLobby"   component={DuoLobbyScreen}   options={BOTTOM} />
       <Stack.Screen name="DuelActive"    component={DuelActiveScreen}    options={FADE}   />
       <Stack.Screen name="DuelJoin"    component={DuelActiveScreen}    options={FADE}   />
+      <Stack.Screen name="DefiChallenge" component={DefiChallengeScreen} options={{ ...FADE, gestureEnabled: false }} />
+      <Stack.Screen name="ViralShare"    component={ViralShareScreen}    options={BOTTOM} />
+      <Stack.Screen name="ViralResult"   component={ViralResultScreen}   options={{ ...FADE, gestureEnabled: false }} />
 
       {/* ── Historique ── */}
       <Stack.Screen name="Historique"  component={HistoryScreen}  options={RIGHT}  />

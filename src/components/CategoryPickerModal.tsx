@@ -111,19 +111,8 @@ export default function CategoryPickerModal({ visible, onClose }) {
     close();
 
     // 3. Naviguer IMMÉDIATEMENT (pas de setTimeout, pas d'attente animation)
-    const CATEGORIES = [
-  {
-    key:    'gaming',
-    route:  'DuelPick',   // ✅ bon nom
-    params: {},
-  },
-  {
-    key:    'physique',
-    route:  'DuelPick',   // ✅ même screen, filtre physique auto
-    params: { defaultCategory: 'physique' },
-  },
-];
-};
+    navigate(cat.route, cat.params);
+  };
 
   const sheetY = Animated.add(translateY, dragY);
 
