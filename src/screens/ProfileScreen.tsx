@@ -29,7 +29,7 @@ const RANK_CONFIG = {
 export default function ProfileScreen({
   username = 'brael',
   rank = 'RANG OR II',
-  walletBalance = 0,
+  walletBalance = 12500,
   history = [],
   onLogout,
 }) {

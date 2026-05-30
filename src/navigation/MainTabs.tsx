@@ -9,24 +9,25 @@ import * as Haptics from 'expo-haptics';
 import { Home, Clock, Wallet, User, Swords } from 'lucide-react-native';
 import { T } from '../utils/designTokens';
 
-import LobbyScreen              from '../screens/LobbyScreen';
-import GamingChallengesScreen   from '../screens/GamingChallengesScreen';
-import PhysicalChallengesScreen from '../screens/PhysicalChallengesScreen';
-import GameSelectScreen         from '../screens/GameSelectScreen';
-import DefiSelectScreen         from '../screens/DefiSelectScreen';
-import ConfigScreen             from '../screens/ConfigScreen';
-import LiveScreen               from '../screens/LiveScreen';
-import ResultScreen             from '../screens/ResultScreen';
-import WalletScreen             from '../screens/WalletScreen';
-import ProfileScreen            from '../screens/ProfileScreen';
-import HistoryScreen            from '../screens/HistoryScreen';
-import DuoLobbyScreen           from '../screens/DuoLobbyScreen';
-import CategoryPickerModal      from '../components/CategoryPickerModal';
-import DuoConfigScreen          from '../screens/DuoConfigScreen';
-import DuelPickScreen           from '../screens/DuelPickScreen';
+import LobbyScreen               from '../screens/LobbyScreen';
+import GamingChallengesScreen    from '../screens/GamingChallengesScreen';
+import PhysicalChallengesScreen  from '../screens/PhysicalChallengesScreen';
+import GameSelectScreen          from '../screens/GameSelectScreen';
+import DefiSelectScreen          from '../screens/DefiSelectScreen';
+import ConfigScreen              from '../screens/ConfigScreen';
+import LiveScreen                from '../screens/LiveScreen';
+import ResultScreen              from '../screens/ResultScreen';
+import WalletScreen              from '../screens/WalletScreen';
+import ProfileScreen             from '../screens/ProfileScreen';
+import HistoryScreen             from '../screens/HistoryScreen';
+import DuoLobbyScreen            from '../screens/DuoLobbyScreen';
+import CategoryPickerModal       from '../components/CategoryPickerModal';
+import DuoConfigScreen           from '../screens/DuoConfigScreen';
+import DuelPickScreen            from '../screens/DuelPickScreen';
+import DuelActiveScreen from '../screens/DuelActiveScreen';
 
 /* ══════════════════════════════════════
-   OPTIONS TRANSITIONS FLUIDES
+   TRANSITIONS
 ══════════════════════════════════════ */
 const STACK_BASE = {
   headerShown:      false,
@@ -41,52 +42,104 @@ const FADE     = { ...STACK_BASE, animation: 'fade',              animationDurat
 const FADE_LOCK= { ...FADE,       gestureEnabled: false };
 
 /* ══════════════════════════════════════
-   STACKS
+   SCREENS OÙ LA TAB BAR DOIT ÊTRE CACHÉE
+   (noms de routes dans les stacks)
+══════════════════════════════════════ */
+const HIDDEN_IN_DUEL = new Set([
+  'DuelPickMain',
+  'DuoConfigScreen',
+  'DuoLobbyScreen',
+  'DuelActiveScreen',
+  ]);
+
+/* ── Helper : trouver la route active la plus profonde ── */
+function getActiveRouteName(state) {
+  if (!state) return null;
+  const route = state.routes[state.index ?? 0];
+  if (route?.state) return getActiveRouteName(route.state);
+  return route?.name ?? null;
+}
+
+/* ══════════════════════════════════════
+   HOME STACK
 ══════════════════════════════════════ */
 const HomeStack = createNativeStackNavigator();
 function HomeStackScreen() {
   return (
     <HomeStack.Navigator screenOptions={SLIDE}>
-      <HomeStack.Screen name="Lobby"        component={LobbyScreen}              />
-      <HomeStack.Screen name="GameSelect"   component={GameSelectScreen}         />
-      <HomeStack.Screen name="DefiSelect"   component={DefiSelectScreen}         />
-      <HomeStack.Screen name="Config"       component={ConfigScreen}    options={SLIDE_UP} />
-      <HomeStack.Screen name="Live"         component={LiveScreen}      options={FADE}     />
-      <HomeStack.Screen name="Result"       component={ResultScreen}    options={FADE_LOCK}/>
-      <HomeStack.Screen name="PhysicalChallenges" component={PhysicalChallengesScreen} />
-      <HomeStack.Screen name="DuoConfig" component={DuoConfigScreen} />
-      <HomeStack.Screen name="DuoLobby" component={DuoLobbyScreen} />
-      <HomeStack.Screen name="DuelPick" component={DuelPickScreen} />
+      <HomeStack.Screen name="Lobby"              component={LobbyScreen}             />
+      <HomeStack.Screen name="GameSelect"         component={GameSelectScreen}        />
+      <HomeStack.Screen name="DefiSelect"         component={DefiSelectScreen}        />
+      <HomeStack.Screen name="Config"             component={ConfigScreen}   options={SLIDE_UP}  />
+      <HomeStack.Screen name="Live"               component={LiveScreen}     options={FADE}      />
+      <HomeStack.Screen name="Result"             component={ResultScreen}   options={FADE_LOCK} />
+      <HomeStack.Screen name="PhysicalChallenges" component={PhysicalChallengesScreen}           />
+      <HomeStack.Screen name="DuoConfig"          component={DuoConfigScreen}                    />
+      <HomeStack.Screen name="DuoLobby"           component={DuoLobbyScreen}                     />
+      <HomeStack.Screen name="DuelPick"           component={DuelPickScreen}                     />
     </HomeStack.Navigator>
   );
 }
 
+/* ══════════════════════════════════════
+   HISTORIQUE STACK
+══════════════════════════════════════ */
 const HistoStack = createNativeStackNavigator();
 function HistoStackScreen() {
   return (
     <HistoStack.Navigator screenOptions={SLIDE}>
-      <HistoStack.Screen name="HistoryMain" component={HistoryScreen}    />
-      <HistoStack.Screen name="DefiSelect"  component={DefiSelectScreen} />
-      <HistoStack.Screen name="Config"      component={ConfigScreen}    options={SLIDE_UP} />
-      <HistoStack.Screen name="Live"        component={LiveScreen}      options={FADE}     />
-      <HistoStack.Screen name="Result"      component={ResultScreen}    options={FADE_LOCK}/>
+      <HistoStack.Screen name="HistoryMain" component={HistoryScreen}   />
+      <HistoStack.Screen name="DefiSelect"  component={DefiSelectScreen}/>
+      <HistoStack.Screen name="Config"      component={ConfigScreen}    options={SLIDE_UP}  />
+      <HistoStack.Screen name="Live"        component={LiveScreen}      options={FADE}      />
+      <HistoStack.Screen name="Result"      component={ResultScreen}    options={FADE_LOCK} />
     </HistoStack.Navigator>
   );
 }
 
+/* ══════════════════════════════════════
+   DUEL STACK — Tab bar cachée sur tout
+   sauf DuelMain (lobby liste des duels)
+══════════════════════════════════════ */
 const DuelStack = createNativeStackNavigator();
 function DuelStackScreen() {
   return (
     <DuelStack.Navigator screenOptions={SLIDE}>
+      {/* ✅ Seul écran qui garde la tab bar visible */}
+      <DuelStack.Screen name="DuelMain"       component={DuoLobbyScreen}      />
+
+      {/* ✅ Ces screens cachent la tab bar */}
+      <DuelStack.Screen name="DuelPickMain"   component={DuelPickScreen}   />
+      <DuelStack.Screen
+        name="DuoConfigScreen"
+        component={DuoConfigScreen}
+        options={SLIDE_UP}
+      />
+      <DuelStack.Screen
+        name="DuoLobbyScreen"
+        component={DuoLobbyScreen}
+        options={SLIDE_UP}
+      />
+      <DuelStack.Screen
+        name="DuelActiveScreen"
+        component={DuelActiveScreen}
+        
+        options={FADE}
+      />
+      
+      {/* Anciens écrans conservés */}
       <DuelStack.Screen name="DuoLobbyMain" component={DuoLobbyScreen}   />
       <DuelStack.Screen name="DefiSelect"   component={DefiSelectScreen}  />
-      <DuelStack.Screen name="Config"       component={ConfigScreen}     options={SLIDE_UP} />
-      <DuelStack.Screen name="Live"         component={LiveScreen}       options={FADE}     />
-      <DuelStack.Screen name="Result"       component={ResultScreen}     options={FADE_LOCK}/>
+      <DuelStack.Screen name="Config"       component={ConfigScreen}      options={SLIDE_UP}  />
+      <DuelStack.Screen name="Live"         component={LiveScreen}        options={FADE}      />
+      <DuelStack.Screen name="Result"       component={ResultScreen}      options={FADE_LOCK} />
     </DuelStack.Navigator>
   );
 }
 
+/* ══════════════════════════════════════
+   WALLET STACK
+══════════════════════════════════════ */
 const WalletStack = createNativeStackNavigator();
 function WalletStackScreen() {
   return (
@@ -96,6 +149,9 @@ function WalletStackScreen() {
   );
 }
 
+/* ══════════════════════════════════════
+   PROFILE STACK
+══════════════════════════════════════ */
 const ProfileStack = createNativeStackNavigator();
 function ProfileStackScreen() {
   return (
@@ -111,17 +167,17 @@ function ProfileStackScreen() {
 const Tab = createBottomTabNavigator();
 
 const TABS = [
-  { name: 'HomeTab',    label: 'Accueil',    Icon: Home,   color: T.gold    },
-  { name: 'HistoTab',   label: 'Historique', Icon: Clock,  color: T.gaming  },
-  { name: 'DuelLobby',  label: 'Duels',      Icon: Swords, color: '#A855F7' },
-  { name: 'WalletTab',  label: 'Wallet',     Icon: Wallet, color: T.gold    },
-  { name: 'ProfileTab', label: 'Profil',     Icon: User,   color: T.gold    },
+  { name: 'HomeTab',   label: 'Accueil',    Icon: Home,   color: T.gaming  },
+  { name: 'HistoTab',  label: 'Historique', Icon: Clock,  color: T.gaming  },
+  { name: 'DuelTab',   label: 'Duels',      Icon: Swords, color: '#A855F7' },
+  { name: 'WalletTab', label: 'Wallet',     Icon: Wallet, color: T.gaming  },
+  { name: 'ProfileTab',label: 'Profil',     Icon: User,   color: T.gaming  },
 ];
 
 const LEFT_TABS  = TABS.slice(0, 2);
 const RIGHT_TABS = TABS.slice(3, 5);
 
-/* ══ BOUTON CENTRAL ⚡ ══ */
+/* ══ BOUTON CENTRAL  ══ */
 function CenterButton({ onPress }) {
   const scale  = useRef(new Animated.Value(1)).current;
   const glow   = useRef(new Animated.Value(0)).current;
@@ -149,7 +205,6 @@ function CenterButton({ onPress }) {
         ]).start();
       }}
       onPressOut={() => {
-        // ✅ Action IMMÉDIATE
         onPress?.();
         Animated.parallel([
           Animated.spring(scale,  { toValue: 1, tension: 200, friction: 6, useNativeDriver: true }),
@@ -173,35 +228,23 @@ function CenterButton({ onPress }) {
 function TabItem({ tab, focused, onPress }) {
   const bounce = useRef(new Animated.Value(1)).current;
   const dot    = useRef(new Animated.Value(focused ? 1 : 0)).current;
-  // ✅ bg séparé avec useNativeDriver: false (backgroundColor)
   const bg     = useRef(new Animated.Value(focused ? 1 : 0)).current;
 
   useEffect(() => {
-    // ✅ Animations séparées — pas de mix natif/non-natif dans parallel
-    Animated.timing(dot, {
-      toValue: focused ? 1 : 0, duration: 180, useNativeDriver: true,
-    }).start();
-    Animated.timing(bg, {
-      toValue: focused ? 1 : 0, duration: 180, useNativeDriver: false,
-    }).start();
+    Animated.timing(dot, { toValue: focused ? 1 : 0, duration: 180, useNativeDriver: true  }).start();
+    Animated.timing(bg,  { toValue: focused ? 1 : 0, duration: 180, useNativeDriver: false }).start();
   }, [focused]);
 
   const { Icon, label, color } = tab;
-
-  const iconBg = bg.interpolate({
-    inputRange:  [0, 1],
-    outputRange: ['rgba(0,0,0,0)', color + '18'],
-  });
+  const iconBg = bg.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', color + '22'] });
 
   return (
     <TouchableOpacity
       onPress={() => {
-        // ✅ 1. Action immédiate
         Haptics.selectionAsync();
         onPress?.();
-        // ✅ 2. Animation après
         Animated.sequence([
-          Animated.timing(bounce, { toValue: 0.78, duration: 55, useNativeDriver: true }),
+          Animated.timing(bounce, { toValue: 0.78, duration: 55,  useNativeDriver: true }),
           Animated.spring(bounce, { toValue: 1.12, tension: 400, friction: 5, useNativeDriver: true }),
           Animated.spring(bounce, { toValue: 1,    tension: 300, friction: 8, useNativeDriver: true }),
         ]).start();
@@ -209,22 +252,13 @@ function TabItem({ tab, focused, onPress }) {
       activeOpacity={1}
       style={styles.tabItem}
     >
-      {/*
-        ✅ 2 Animated.View séparés :
-        - Externe : backgroundColor (useNativeDriver: false)
-        - Interne : scale/transform (useNativeDriver: true)
-      */}
       <Animated.View style={[
         styles.tabIconWrap,
         focused && { borderColor: color + '30', borderWidth: 1 },
         { backgroundColor: iconBg },
       ]}>
         <Animated.View style={{ transform: [{ scale: bounce }] }}>
-          <Icon
-            size={20}
-            color={focused ? color : T.muted}
-            strokeWidth={focused ? 2.3 : 1.6}
-          />
+          <Icon size={20} color={focused ? color : T.muted} strokeWidth={focused ? 2.3 : 1.6} />
         </Animated.View>
       </Animated.View>
 
@@ -233,9 +267,7 @@ function TabItem({ tab, focused, onPress }) {
         {
           color:   focused ? color : T.muted,
           opacity: dot,
-          transform: [{
-            scale: dot.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }),
-          }],
+          transform: [{ scale: dot.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }],
         },
       ]}>
         {label}
@@ -257,56 +289,58 @@ function CustomTabBar({ state, descriptors, navigation }) {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(barSlideAnim, {
-        toValue: 0, tension: 55, friction: 12, delay: 400, useNativeDriver: true,
-      }),
-      Animated.timing(barFadeAnim, {
-        toValue: 1, duration: 400, delay: 400, useNativeDriver: true,
-      }),
+      Animated.spring(barSlideAnim, { toValue: 0, tension: 55, friction: 12, delay: 400, useNativeDriver: true }),
+      Animated.timing(barFadeAnim,  { toValue: 1, duration: 400, delay: 400, useNativeDriver: true }),
     ]).start();
   }, []);
 
+  /* ✅ Déterminer si on doit cacher la tab bar
+     → On regarde la route active la plus profonde du DuelTab */
+  const duelTabRoute    = state.routes.find(r => r.name === 'DuoLobbyScreen' || r.name === 'DuelPickMain' || r.name === 'DuoConfigScreen' || r.name === 'DuelActiveScreen');
+  const activeInDuel    = duelTabRoute?.state
+    ? getActiveRouteName(duelTabRoute.state)
+    : null;
+  const shouldHideTabBar = activeInDuel !== null && HIDDEN_IN_DUEL.has(activeInDuel);
+
+  /* ✅ Slide out au lieu d'un brusque display:none */
+  const hideAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(hideAnim, {
+      toValue: shouldHideTabBar ? 120 : 0,
+      tension: 80, friction: 12,
+      useNativeDriver: true,
+    }).start();
+  }, [shouldHideTabBar]);
+
   const navigateTab = (tabName, routeKey, isFocused) => {
-    // ✅ Si c'est Home ET déjà sur Home → scroll en haut (no-op)
-    // ✅ Si c'est Home et ailleurs → toujours reset vers HomeTab
     if (tabName === 'HomeTab') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-      // Reset tout le stack ET revenir sur HomeTab
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'HomeTab' }],
-      });
+      navigation.reset({ index: 0, routes: [{ name: 'HomeTab' }] });
       return;
     }
-
-    const event = navigation.emit({
-      type: 'tabPress', target: routeKey, canPreventDefault: true,
-    });
-    if (!isFocused && !event.defaultPrevented) {
-      navigation.navigate(tabName);
-    }
+    const event = navigation.emit({ type: 'tabPress', target: routeKey, canPreventDefault: true });
+    if (!isFocused && !event.defaultPrevented) navigation.navigate(tabName);
   };
-
-  const leftTabs  = TABS.slice(0, 2);
-  const rightTabs = TABS.slice(3, 5);
 
   return (
     <>
-      <CategoryPickerModal
-        visible={showPicker}
-        onClose={() => setShowPicker(false)}
-      />
+      <CategoryPickerModal visible={showPicker} onClose={() => setShowPicker(false)} />
 
       <Animated.View style={[
         styles.tabBarContainer,
-        { opacity: barFadeAnim, transform: [{ translateY: barSlideAnim }] },
+        {
+          opacity:   barFadeAnim,
+          transform: [
+            { translateY: Animated.add(barSlideAnim, hideAnim) },
+          ],
+        },
       ]}>
         <View style={styles.tabBar}>
 
-          {/* ── Gauche ── */}
+          {/* Gauche */}
           <View style={styles.tabSide}>
-            {leftTabs.map((tab) => {
+            {LEFT_TABS.map(tab => {
               const routeIndex = state.routes.findIndex(r => r.name === tab.name);
               if (routeIndex === -1) return null;
               const focused = state.index === routeIndex;
@@ -321,15 +355,12 @@ function CustomTabBar({ state, descriptors, navigation }) {
             })}
           </View>
 
-          {/* ── Centre ⚡ ── */}
-          <CenterButton onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            setShowPicker(true);
-          }} />
+          {/* Centre ⚡ */}
+          <CenterButton onPress={() => setShowPicker(true)} />
 
-          {/* ── Droite ── */}
+          {/* Droite */}
           <View style={styles.tabSide}>
-            {rightTabs.map((tab) => {
+            {RIGHT_TABS.map(tab => {
               const routeIndex = state.routes.findIndex(r => r.name === tab.name);
               if (routeIndex === -1) return null;
               const focused = state.index === routeIndex;
@@ -357,8 +388,6 @@ export default function MainTabs() {
       tabBar={props => <CustomTabBar {...props} />}
       screenOptions={{ headerShown: false }}
       initialRouteName="HomeTab"
-      // ✅ PAS de lazy: false global — évite de charger tous les screens au démarrage
-      // ce qui causait "Text strings must be rendered within a <Text> component" × 4
     >
       <Tab.Screen name="HomeTab"    component={HomeStackScreen}   />
       <Tab.Screen name="HistoTab"   component={HistoStackScreen}  />
@@ -382,16 +411,14 @@ const styles = StyleSheet.create({
     borderRadius: 28, borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.07)',
     paddingHorizontal: 8, paddingVertical: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 14 },
+    shadowColor: '#000', shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.6, shadowRadius: 28, elevation: 22,
   },
-
   tabSide:     { flex: 1, flexDirection: 'row', justifyContent: 'space-around' },
   tabItem:     { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4, position: 'relative' },
   tabIconWrap: { width: 40, height: 40, borderRadius: 13, justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
   tabLabel:    { fontFamily: 'Inter-Regular', fontSize: 9, letterSpacing: 0.3, fontWeight: '600', marginTop: 1 },
   tabDot:      { position: 'absolute', bottom: -2, width: 4, height: 4, borderRadius: 2 },
-
   centerOuter: { width: 66, height: 66, alignItems: 'center', justifyContent: 'center', marginTop: -24 },
   centerBtn: {
     width: 62, height: 62, borderRadius: 31,

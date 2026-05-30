@@ -1,44 +1,312 @@
 // @ts-nocheck
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Animated, StatusBar, Dimensions,
+  Modal, TextInput, ActivityIndicator, Alert,
+  RefreshControl, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import {
   ArrowDownCircle, ArrowUpCircle, Shield, Coins,
   TrendingUp, TrendingDown, Trophy, Minus,
-  ChevronRight, Zap, Clock,
+  Zap, Clock, X, CheckCircle, AlertCircle,
+  Gamepad2, Dumbbell, RefreshCw,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { T } from '../utils/designTokens';
 import { fmt } from '../utils/helpers';
+import { supabase } from '../supabaseClient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: W } = Dimensions.get('window');
 
-const FILTERS = ['Tout', 'Victoires', 'Défaites', 'Dépôts/Retraits'];
+const FILTERS = ['Tout', 'Victoires', 'Défaites', 'Dépôts', 'Retraits'];
 
-const MOCK_HISTORY = [
-  { type: 'win',      label: 'Duel FIFA vs @Bolo',      amount: 2000, cote: 2.0,  game: 'FIFA'     },
-  { type: 'deposit',  label: 'Recharge Wave',            amount: 5000,             game: null       },
-  { type: 'loss',     label: 'Défi PES Solo',            amount: 500,  cote: 1.6,  game: 'PES'      },
-  { type: 'win',      label: '30 Pompes — Physique',     amount: 900,  cote: 2.5,  game: 'PHYSIQUE' },
-  { type: 'withdraw', label: 'Retrait Orange Money',     amount: 3000,             game: null       },
-  { type: 'loss',     label: 'NBA 2K — Triple Double',   amount: 400,  cote: 3.5,  game: 'NBA'      },
-];
+const MONTANTS_RAPIDES = [1000, 2000, 5000, 10000];
 
-export default function WalletScreen2({
-  walletBalance = 0,
-  username = 'Joueur',
-  history = MOCK_HISTORY,
-}) {
+/* ══════════════════════════════════════
+   MODAL DÉPÔT / RETRAIT
+══════════════════════════════════════ */
+function TransactionModal({ visible, type, walletBalance, userId, onClose, onSuccess }) {
+  const [amount,   setAmount]   = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const [step,     setStep]     = useState(1); // 1=saisie, 2=confirmation, 3=succès
+  const [method,   setMethod]   = useState(null);
+  const slideAnim = useRef(new Animated.Value(400)).current;
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+
+  const METHODS = type === 'deposit' ? [
+    { key: 'wave',    label: 'Wave',         emoji: '🌊', color: '#00B8D9' },
+    { key: 'om',      label: 'Orange Money', emoji: '', color: '#FF6600' },
+    { key: 'mtn',     label: 'MTN Money',    emoji: '', color: '#FFCC00' },
+  ] : [
+    { key: 'wave',    label: 'Wave',         emoji: '🌊', color: '#00B8D9' },
+    { key: 'om',      label: 'Orange Money', emoji: '', color: '#FF6600' },
+    { key: 'mtn',     label: 'MTN Money',    emoji: '', color: '#FFCC00' },
+  ];
+
+  useEffect(() => {
+    if (visible) {
+      setStep(1);
+      setAmount('');
+      setMethod(null);
+      Animated.parallel([
+        Animated.timing(fadeAnim,  { toValue: 1, duration: 250, useNativeDriver: true }),
+        Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(fadeAnim,  { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 400, duration: 250, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [visible]);
+
+  const parsedAmount = parseInt(amount.replace(/\D/g, ''), 10) || 0;
+  const isDeposit    = type === 'deposit';
+  const color        = isDeposit ? T.gold : T.gaming;
+  const title        = isDeposit ? 'RECHARGER' : 'RETIRER';
+
+  const handleConfirm = async () => {
+    if (parsedAmount < 500) {
+      Alert.alert('Montant invalide', 'Minimum 500 FCFA.'); return;
+    }
+    if (!isDeposit && parsedAmount > walletBalance) {
+      Alert.alert('Solde insuffisant', `Ton solde est de ${fmt(walletBalance)} FCFA.`); return;
+    }
+    if (!method) {
+      Alert.alert('Méthode requise', 'Choisis une méthode de paiement.'); return;
+    }
+    if (step === 1) { setStep(2); return; }
+
+    // Étape 2 → exécuter
+    setLoading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    try {
+      const fnName = isDeposit ? 'deposit_funds' : 'withdraw_funds';
+      const { data, error } = await supabase.rpc(fnName, {
+        p_user_id: userId,
+        p_amount:  parsedAmount,
+        p_label:   `${isDeposit ? 'Recharge' : 'Retrait'} ${METHODS.find(m => m.key === method)?.label}`,
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Échec de la transaction.');
+
+      // Mettre à jour AsyncStorage
+      const stored = await AsyncStorage.getItem('skillz_user');
+      if (stored) {
+        const user = JSON.parse(stored);
+        user.balance = data.balance_new;
+        await AsyncStorage.setItem('skillz_user', JSON.stringify(user));
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setStep(3);
+      setTimeout(() => {
+        onSuccess(data.balance_new);
+        onClose();
+      }, 2000);
+
+    } catch (e) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Erreur', e.message || 'Transaction échouée.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
+      </Animated.View>
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalKAV}
+        pointerEvents="box-none"
+      >
+        <Animated.View style={[styles.modalSheet, { transform: [{ translateY: slideAnim }] }]}>
+          {/* Handle */}
+          <View style={styles.modalHandle} />
+
+          {/* Header */}
+          <View style={styles.modalHeader}>
+            <View style={[styles.modalHeaderIcon, { backgroundColor: color + '20', borderColor: color + '40' }]}>
+              {isDeposit
+                ? <ArrowDownCircle size={20} color={color} />
+                : <ArrowUpCircle   size={20} color={color} />
+              }
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.modalTitle, { color }]}>{title}</Text>
+              {!isDeposit && (
+                <Text style={styles.modalSoldeDispo}>
+                  Dispo : <Text style={{ color: T.gold }}>{fmt(walletBalance)} F</Text>
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity style={styles.modalClose} onPress={onClose}>
+              <X size={15} color={T.muted} />
+            </TouchableOpacity>
+          </View>
+
+          {/* ── ÉTAPE 1 : Saisie ── */}
+          {step === 1 && (
+            <>
+              {/* Montants rapides */}
+              <Text style={styles.modalLabel}>MONTANT RAPIDE</Text>
+              <View style={styles.quickAmounts}>
+                {MONTANTS_RAPIDES.map(m => (
+                  <TouchableOpacity
+                    key={`amt_${m}`}
+                    style={[styles.quickAmountChip, parsedAmount === m && { backgroundColor: color + '20', borderColor: color }]}
+                    onPress={() => { Haptics.selectionAsync(); setAmount(String(m)); }}
+                  >
+                    <Text style={[styles.quickAmountText, parsedAmount === m && { color }]}>
+                      {fmt(m)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Saisie libre */}
+              <Text style={styles.modalLabel}>OU SAISIR UN MONTANT</Text>
+              <View style={[styles.amountInputWrap, { borderColor: color + '50' }]}>
+                <TextInput
+                  style={styles.amountInput}
+                  value={amount}
+                  onChangeText={t => setAmount(t.replace(/\D/g, ''))}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor={T.muted}
+                  selectTextOnFocus
+                />
+                <Text style={styles.amountCurrency}>FCFA</Text>
+              </View>
+
+              {/* Méthode paiement */}
+              <Text style={styles.modalLabel}>MÉTHODE</Text>
+              <View style={styles.methodsRow}>
+                {METHODS.map(m => (
+                  <TouchableOpacity
+                    key={`method_${m.key}`}
+                    style={[styles.methodCard, method === m.key && { borderColor: m.color, backgroundColor: m.color + '15' }]}
+                    onPress={() => { Haptics.selectionAsync(); setMethod(m.key); }}
+                  >
+                    <Text style={styles.methodEmoji}>{m.emoji}</Text>
+                    <Text style={[styles.methodLabel, method === m.key && { color: m.color }]}>
+                      {m.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+
+          {/* ── ÉTAPE 2 : Confirmation ── */}
+          {step === 2 && (
+            <View style={styles.confirmSection}>
+              <View style={[styles.confirmIcon, { backgroundColor: color + '15' }]}>
+                <AlertCircle size={36} color={color} />
+              </View>
+              <Text style={styles.confirmTitle}>Confirmer ?</Text>
+              <View style={styles.confirmDetails}>
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmLabel}>Opération</Text>
+                  <Text style={[styles.confirmValue, { color }]}>{title}</Text>
+                </View>
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmLabel}>Montant</Text>
+                  <Text style={[styles.confirmValue, { color: T.gold }]}>{fmt(parsedAmount)} FCFA</Text>
+                </View>
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmLabel}>Via</Text>
+                  <Text style={styles.confirmValue}>
+                    {METHODS.find(m => m.key === method)?.emoji} {METHODS.find(m => m.key === method)?.label}
+                  </Text>
+                </View>
+                {!isDeposit && (
+                  <View style={styles.confirmRow}>
+                    <Text style={styles.confirmLabel}>Solde après</Text>
+                    <Text style={[styles.confirmValue, { color: T.success }]}>
+                      {fmt(walletBalance - parsedAmount)} FCFA
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* ── ÉTAPE 3 : Succès ── */}
+          {step === 3 && (
+            <View style={styles.successSection}>
+              <View style={styles.successIcon}>
+                <CheckCircle size={48} color={T.success} />
+              </View>
+              <Text style={styles.successTitle}>
+                {isDeposit ? 'Recharge réussie !' : 'Retrait effectué !'}
+              </Text>
+              <Text style={styles.successAmount}>
+                {isDeposit ? '+' : '-'}{fmt(parsedAmount)} FCFA
+              </Text>
+            </View>
+          )}
+
+          {/* Bouton action */}
+          {step !== 3 && (
+            <TouchableOpacity
+              style={[styles.modalActionBtn, { backgroundColor: color }, loading && { opacity: 0.7 }]}
+              onPress={handleConfirm}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              {loading
+                ? <ActivityIndicator color="#000" />
+                : <Text style={styles.modalActionBtnText}>
+                    {step === 1 ? 'CONTINUER →' : 'CONFIRMER'}
+                  </Text>
+              }
+            </TouchableOpacity>
+          )}
+
+          {step === 2 && !loading && (
+            <TouchableOpacity style={styles.modalBackBtn} onPress={() => setStep(1)}>
+              <Text style={styles.modalBackText}>← Modifier</Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={{ height: 20 }} />
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+/* ══════════════════════════════════════
+   WALLET SCREEN PRINCIPAL
+══════════════════════════════════════ */
+export default function WalletScreen() {
   const insets = useSafeAreaInsets();
+
+  const [wallet,       setWallet]       = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [user,         setUser]         = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [refreshing,   setRefreshing]   = useState(false);
   const [activeFilter, setActiveFilter] = useState('Tout');
+  const [showDeposit,  setShowDeposit]  = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
 
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const scaleCard = useRef(new Animated.Value(0.97)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
+  /* ── Animations entrée ── */
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim,  { toValue: 1, duration: 600, useNativeDriver: true }),
@@ -46,7 +314,6 @@ export default function WalletScreen2({
       Animated.spring(scaleCard, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
     ]).start();
 
-    // Pulse sur le solde
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.03, duration: 1800, useNativeDriver: true }),
@@ -55,34 +322,153 @@ export default function WalletScreen2({
     ).start();
   }, []);
 
-  const totalGains  = history.filter(h => h.type === 'win').reduce((a, h) => a + h.amount, 0);
-  const totalPertes = history.filter(h => h.type === 'loss').reduce((a, h) => a + h.amount, 0);
-  const net         = totalGains - totalPertes;
+  /* ── Charger données ── */
+  useFocusEffect(useCallback(() => {
+    loadWalletData();
+    setupRealtime();
+  }, []));
 
-  const defisGagnes = history.filter(h => h.type === 'win').length;
-  const defisPerdus = history.filter(h => h.type === 'loss').length;
+  const loadWalletData = async () => {
+    setLoading(true);
+    try {
+      const stored = await AsyncStorage.getItem('skillz_user');
+      if (!stored) return;
+      const u = JSON.parse(stored);
+      setUser(u);
 
-  const filtered = history.filter(h => {
-    if (activeFilter === 'Tout')            return true;
-    if (activeFilter === 'Victoires')       return h.type === 'win';
-    if (activeFilter === 'Défaites')        return h.type === 'loss';
-    if (activeFilter === 'Dépôts/Retraits') return h.type === 'deposit' || h.type === 'withdraw';
+      const [walletRes, txRes] = await Promise.all([
+        supabase.from('wallets').select('*').eq('user_id', u.id).single(),
+        supabase.from('transactions').select('*').eq('user_id', u.id)
+          .order('created_at', { ascending: false }).limit(50),
+      ]);
+
+      if (walletRes.data) setWallet(walletRes.data);
+      if (txRes.data)     setTransactions(txRes.data);
+
+    } catch (e) {
+      console.error('loadWalletData:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ── Realtime solde ── */
+  const setupRealtime = () => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`wallet_rt_${user.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public',
+        table: 'wallets', filter: `user_id=eq.${user.id}`,
+      }, (payload) => {
+        setWallet(payload.new);
+      })
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public',
+        table: 'transactions', filter: `user_id=eq.${user.id}`,
+      }, (payload) => {
+        setTransactions(prev => [payload.new, ...prev]);
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await loadWalletData();
+    setRefreshing(false);
+  };
+
+  const handleTransactionSuccess = (newBalance) => {
+    setWallet(prev => ({ ...prev, balance: newBalance }));
+    loadWalletData(); // recharger tout
+  };
+
+  /* ── Config par type de transaction ── */
+  const TX_CONFIG = {
+    win:        { color: T.success, Icon: TrendingUp,     prefix: '+', bg: T.success + '12', label: 'Victoire'  },
+    loss:       { color: T.danger,  Icon: TrendingDown,   prefix: '-', bg: T.danger  + '12', label: 'Défaite'   },
+    deposit:    { color: T.gold,    Icon: ArrowDownCircle,prefix: '+', bg: T.gold    + '12', label: 'Recharge'  },
+    withdraw:   { color: T.gaming,  Icon: ArrowUpCircle,  prefix: '-', bg: T.gaming  + '12', label: 'Retrait'   },
+    bet:        { color: T.danger,  Icon: TrendingDown,   prefix: '-', bg: T.danger  + '12', label: 'Mise'      },
+    bonus:      { color: '#A855F7', Icon: Zap,            prefix: '+', bg: '#A855F7' + '12', label: 'Bonus'     },
+    commission: { color: T.muted,   Icon: Minus,          prefix: '-', bg: 'rgba(255,255,255,0.05)', label: 'Commission' },
+  };
+
+  /* ── Filtre transactions ── */
+  const filtered = transactions.filter(tx => {
+    if (activeFilter === 'Tout')      return true;
+    if (activeFilter === 'Victoires') return tx.type === 'win';
+    if (activeFilter === 'Défaites')  return tx.type === 'loss' || tx.type === 'bet';
+    if (activeFilter === 'Dépôts')    return tx.type === 'deposit' || tx.type === 'bonus';
+    if (activeFilter === 'Retraits')  return tx.type === 'withdraw';
     return true;
   });
 
-  const TX_CONFIG = {
-    win:      { color: T.success, icon: TrendingUp,    prefix: '+', bg: T.success + '12' },
-    loss:     { color: T.danger,  icon: TrendingDown,  prefix: '-', bg: T.danger  + '12' },
-    deposit:  { color: T.gold,    icon: ArrowDownCircle,prefix: '+',bg: T.gold    + '12' },
-    withdraw: { color: T.gaming,  icon: ArrowUpCircle, prefix: '-', bg: T.gaming  + '12' },
+  /* ── Stats calculées ── */
+  const totalGains  = wallet?.total_gains  || 0;
+  const totalPertes = wallet?.total_pertes || 0;
+  const net         = totalGains - totalPertes;
+  const balance     = wallet?.balance      || 0;
+  const username    = user?.username       || 'Joueur';
+
+  const defisGagnes = transactions.filter(t => t.type === 'win').length;
+  const defisPerdus = transactions.filter(t => t.type === 'loss').length;
+
+  const formatDate = (iso) => {
+    const d    = new Date(iso);
+    const now  = new Date();
+    const diff = (now - d) / 1000;
+    if (diff < 3600)   return `Il y a ${Math.floor(diff / 60)} min`;
+    if (diff < 86400)  return `Il y a ${Math.floor(diff / 3600)} h`;
+    if (diff < 172800) return 'Hier';
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   };
+
+  if (loading && !wallet) {
+    return (
+      <View style={[styles.screen, styles.loadingCenter]}>
+        <ActivityIndicator color={T.gold} size="large" />
+        <Text style={styles.loadingText}>Chargement du wallet...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      {/* ── MODALS ── */}
+      <TransactionModal
+        visible={showDeposit}
+        type="deposit"
+        walletBalance={balance}
+        userId={user?.id}
+        onClose={() => setShowDeposit(false)}
+        onSuccess={handleTransactionSuccess}
+      />
+      <TransactionModal
+        visible={showWithdraw}
+        type="withdraw"
+        walletBalance={balance}
+        userId={user?.id}
+        onClose={() => setShowWithdraw(false)}
+        onSuccess={handleTransactionSuccess}
+      />
 
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={T.gold}
+            colors={[T.gold]}
+          />
+        }
+      >
         {/* ── HEADER ── */}
         <Animated.View style={[styles.header, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View>
@@ -98,18 +484,17 @@ export default function WalletScreen2({
         {/* ── CARTE SOLDE ── */}
         <Animated.View style={{ transform: [{ scale: scaleCard }], opacity: fadeAnim, marginBottom: 16 }}>
           <View style={styles.balanceCard}>
-            {/* Orbes déco */}
             <View style={styles.orb1} />
             <View style={styles.orb2} />
 
             {/* User row */}
             <View style={styles.cardUserRow}>
               <View style={styles.cardAvatar}>
-                <Text style={styles.cardAvatarText}>{username[0].toUpperCase()}</Text>
+                <Text style={styles.cardAvatarText}>{username[0]?.toUpperCase() || 'S'}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardUsername}>{username}</Text>
-                <Text style={styles.cardWalletLabel}>SKILLZ Wallet</Text>
+                <Text style={styles.cardWalletLabel}>SKILL'Z Wallet</Text>
               </View>
               <View style={styles.fcfaBadge}>
                 <Coins size={11} color={T.gold} />
@@ -120,7 +505,7 @@ export default function WalletScreen2({
             {/* Solde */}
             <Text style={styles.balanceEyebrow}>SOLDE DISPONIBLE</Text>
             <Animated.Text style={[styles.balanceAmount, { transform: [{ scale: pulseAnim }] }]}>
-              {fmt(walletBalance)}
+              {fmt(balance)}
               <Text style={styles.balanceCurrency}> FCFA</Text>
             </Animated.Text>
 
@@ -148,7 +533,14 @@ export default function WalletScreen2({
 
         {/* ── ACTIONS ── */}
         <Animated.View style={[styles.actionsRow, { opacity: fadeAnim }]}>
-          <TouchableOpacity style={styles.actionBtn} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setShowDeposit(true);
+            }}
+          >
             <View style={[styles.actionIcon, { backgroundColor: T.gold + '18', borderColor: T.gold + '40' }]}>
               <ArrowDownCircle size={26} color={T.gold} />
             </View>
@@ -157,7 +549,14 @@ export default function WalletScreen2({
 
           <View style={styles.actionDivider} />
 
-          <TouchableOpacity style={styles.actionBtn} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setShowWithdraw(true);
+            }}
+          >
             <View style={[styles.actionIcon, { backgroundColor: T.gaming + '18', borderColor: T.gaming + '40' }]}>
               <ArrowUpCircle size={26} color={T.gaming} />
             </View>
@@ -168,15 +567,17 @@ export default function WalletScreen2({
         {/* ── STATS TRIO ── */}
         <Animated.View style={[styles.trioRow, { opacity: fadeAnim }]}>
           {[
-            { label: 'Défis gagnés', value: defisGagnes, color: T.success, icon: Trophy },
-            { label: 'Défis perdus', value: defisPerdus, color: T.danger,  icon: Minus  },
-            { label: 'Filets reçus', value: 0,           color: T.gold,    icon: Zap    },
+            { label: 'Défis gagnés',  value: defisGagnes,             color: T.success, Icon: Trophy },
+            { label: 'Défis perdus',  value: defisPerdus,             color: T.danger,  Icon: Minus  },
+            { label: 'Total dépôts',  value: fmt(wallet?.total_depots || 0) + ' F', color: T.gold, Icon: Zap, small: true },
           ].map((s, i) => {
-            const Icon = s.icon;
+            const Icon = s.Icon;
             return (
-              <View key={i} style={styles.trioCard}>
+              <View key={`trio_${i}`} style={styles.trioCard}>
                 <Icon size={16} color={s.color} style={{ marginBottom: 6 }} />
-                <Text style={[styles.trioValue, { color: s.color }]}>{s.value}</Text>
+                <Text style={[styles.trioValue, { color: s.color, fontSize: s.small ? 14 : 26 }]}>
+                  {s.value}
+                </Text>
                 <Text style={styles.trioLabel}>{s.label}</Text>
               </View>
             );
@@ -185,16 +586,25 @@ export default function WalletScreen2({
 
         {/* ── HISTORIQUE ── */}
         <Animated.View style={[styles.historyBlock, { opacity: fadeAnim }]}>
-          <Text style={styles.sectionTitle}>HISTORIQUE</Text>
+          <View style={styles.historyHeader}>
+            <Text style={styles.sectionTitle}>TRANSACTIONS</Text>
+            <TouchableOpacity onPress={onRefresh}>
+              <RefreshCw size={14} color={T.muted} />
+            </TouchableOpacity>
+          </View>
 
           {/* Filtres */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
+          <ScrollView
+            horizontal showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 16 }}
+            contentContainerStyle={{ gap: 8 }}
+          >
             {FILTERS.map(f => {
               const active = activeFilter === f;
               return (
                 <TouchableOpacity
-                  key={f}
-                  onPress={() => setActiveFilter(f)}
+                  key={`filter_${f}`}
+                  onPress={() => { Haptics.selectionAsync(); setActiveFilter(f); }}
                   style={[styles.filterChip, active && styles.filterChipActive]}
                   activeOpacity={0.7}
                 >
@@ -209,25 +619,37 @@ export default function WalletScreen2({
             <View style={styles.emptyState}>
               <Clock size={28} color={T.muted} />
               <Text style={styles.emptyText}>Aucune transaction</Text>
+              <Text style={styles.emptySubText}>
+                {activeFilter !== 'Tout'
+                  ? 'Pas de résultat pour ce filtre'
+                  : 'Tes transactions apparaîtront ici'}
+              </Text>
             </View>
           ) : (
             filtered.map((tx, i) => {
-              const cfg  = TX_CONFIG[tx.type];
-              const Icon = cfg.icon;
+              const cfg  = TX_CONFIG[tx.type] || TX_CONFIG.bet;
+              const Icon = cfg.Icon;
               return (
-                <View key={i} style={styles.txRow}>
+                <View key={`tx_${tx.id || i}`} style={styles.txRow}>
                   <View style={[styles.txIcon, { backgroundColor: cfg.bg }]}>
                     <Icon size={16} color={cfg.color} />
                   </View>
                   <View style={styles.txInfo}>
-                    <Text style={styles.txLabel} numberOfLines={1}>{tx.label}</Text>
-                    {tx.game && (
-                      <Text style={styles.txGame}>{tx.game}{tx.cote ? ` · ×${tx.cote.toFixed(2)}` : ''}</Text>
+                    <Text style={styles.txLabel} numberOfLines={1}>
+                      {tx.label || cfg.label}
+                    </Text>
+                    <Text style={styles.txDate}>{formatDate(tx.created_at)}</Text>
+                  </View>
+                  <View style={styles.txRight}>
+                    <Text style={[styles.txAmount, { color: cfg.color }]}>
+                      {cfg.prefix}{fmt(tx.amount)} F
+                    </Text>
+                    {tx.balance_after != null && (
+                      <Text style={styles.txBalance}>
+                        → {fmt(tx.balance_after)} F
+                      </Text>
                     )}
                   </View>
-                  <Text style={[styles.txAmount, { color: cfg.color }]}>
-                    {cfg.prefix}{fmt(tx.amount)} F
-                  </Text>
                 </View>
               );
             })
@@ -240,135 +662,131 @@ export default function WalletScreen2({
   );
 }
 
+/* ══════════════════════════════════════
+   STYLES
+══════════════════════════════════════ */
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#080A0F' },
+  screen:        { flex: 1, backgroundColor: '#080A0F' },
   scrollContent: { paddingHorizontal: 18, paddingBottom: 120 },
+  loadingCenter: { justifyContent: 'center', alignItems: 'center', gap: 16 },
+  loadingText:   { fontFamily: 'Inter-Regular', fontSize: 13, color: T.muted },
 
   /* Header */
   header: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'flex-end', paddingTop: 16, marginBottom: 24,
   },
-  headerEyebrow: {
-    fontFamily: 'Inter-Regular', fontSize: 10, color: T.gold,
-    fontWeight: '800', letterSpacing: 3, marginBottom: 2,
-  },
-  headerTitle: { fontFamily: 'Rajdhani-Bold', fontSize: 36, color: '#EEEEF5', letterSpacing: 0.5 },
-  securedBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: T.success + '12', borderWidth: 1,
-    borderColor: T.success + '30', borderRadius: 20,
-    paddingHorizontal: 10, paddingVertical: 6,
-  },
-  securedText: { fontFamily: 'Inter-Regular', fontSize: 11, color: T.success, fontWeight: '700' },
+  headerEyebrow: { fontFamily: 'Inter-Regular', fontSize: 10, color: T.gold, fontWeight: '800', letterSpacing: 3, marginBottom: 2 },
+  headerTitle:   { fontFamily: 'Rajdhani-Bold', fontSize: 36, color: '#EEEEF5', letterSpacing: 0.5 },
+  securedBadge:  { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: T.success + '12', borderWidth: 1, borderColor: T.success + '30', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6 },
+  securedText:   { fontFamily: 'Inter-Regular', fontSize: 11, color: T.success, fontWeight: '700' },
 
   /* Balance card */
-  balanceCard: {
-    backgroundColor: '#0D1A14', borderRadius: 20,
-    borderWidth: 1, borderColor: T.gold + '25',
-    padding: 20, overflow: 'hidden', position: 'relative',
-  },
-  orb1: {
-    position: 'absolute', top: -50, right: -50,
-    width: 160, height: 160, borderRadius: 80,
-    backgroundColor: T.gold, opacity: 0.07,
-  },
-  orb2: {
-    position: 'absolute', bottom: -40, left: -40,
-    width: 130, height: 130, borderRadius: 65,
-    backgroundColor: T.gaming, opacity: 0.06,
-  },
+  balanceCard: { backgroundColor: '#0D1A14', borderRadius: 20, borderWidth: 1, borderColor: T.gold + '25', padding: 20, overflow: 'hidden', position: 'relative' },
+  orb1: { position: 'absolute', top: -50, right: -50, width: 160, height: 160, borderRadius: 80, backgroundColor: T.gold, opacity: 0.07 },
+  orb2: { position: 'absolute', bottom: -40, left: -40, width: 130, height: 130, borderRadius: 65, backgroundColor: T.gaming, opacity: 0.06 },
 
-  cardUserRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
-  cardAvatar: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: T.gold + '20', borderWidth: 1.5,
-    borderColor: T.gold + '40', justifyContent: 'center', alignItems: 'center',
-  },
+  cardUserRow:    { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
+  cardAvatar:     { width: 42, height: 42, borderRadius: 21, backgroundColor: T.gold + '20', borderWidth: 1.5, borderColor: T.gold + '40', justifyContent: 'center', alignItems: 'center' },
   cardAvatarText: { fontFamily: 'Rajdhani-Bold', fontSize: 18, color: T.gold },
-  cardUsername: { fontFamily: 'Rajdhani-Bold', fontSize: 16, color: '#EEEEF5' },
-  cardWalletLabel: { fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted, letterSpacing: 0.5 },
-  fcfaBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: T.gold + '12', borderWidth: 1,
-    borderColor: T.gold + '30', borderRadius: 12,
-    paddingHorizontal: 8, paddingVertical: 4,
-  },
-  fcfaText: { fontFamily: 'Inter-Regular', fontSize: 10, color: T.gold, fontWeight: '700' },
+  cardUsername:   { fontFamily: 'Rajdhani-Bold', fontSize: 16, color: '#EEEEF5' },
+  cardWalletLabel:{ fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted, letterSpacing: 0.5 },
+  fcfaBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: T.gold + '12', borderWidth: 1, borderColor: T.gold + '30', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
+  fcfaText:       { fontFamily: 'Inter-Regular', fontSize: 10, color: T.gold, fontWeight: '700' },
 
-  balanceEyebrow: {
-    fontFamily: 'Inter-Regular', fontSize: 9, color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 2.5, fontWeight: '700', marginBottom: 6,
-  },
-  balanceAmount: {
-    fontFamily: 'Rajdhani-Bold', fontSize: 48, color: '#FFFFFF',
-    letterSpacing: 1, marginBottom: 16,
-  },
-  balanceCurrency: { fontSize: 20, color: 'rgba(255,255,255,0.4)' },
+  balanceEyebrow: { fontFamily: 'Inter-Regular', fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 2.5, fontWeight: '700', marginBottom: 6 },
+  balanceAmount:  { fontFamily: 'Rajdhani-Bold', fontSize: 48, color: '#FFFFFF', letterSpacing: 1, marginBottom: 16 },
+  balanceCurrency:{ fontSize: 20, color: 'rgba(255,255,255,0.4)' },
 
-  miniStats: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 10, padding: 12, gap: 0,
-  },
-  miniStat: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  miniDivider: { width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.08)' },
+  miniStats:    { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: 12 },
+  miniStat:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  miniDivider:  { width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.08)' },
   miniStatText: { fontFamily: 'JetBrainsMono-Regular', fontSize: 12, fontWeight: '700' },
-  miniStatLabel: { fontFamily: 'Inter-Regular', fontSize: 11, color: T.muted },
+  miniStatLabel:{ fontFamily: 'Inter-Regular', fontSize: 11, color: T.muted },
 
   /* Actions */
-  actionsRow: {
-    flexDirection: 'row', backgroundColor: '#0F1219',
-    borderRadius: 16, borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)', marginBottom: 14, overflow: 'hidden',
-  },
-  actionBtn: { flex: 1, alignItems: 'center', paddingVertical: 20, gap: 10 },
-  actionIcon: {
-    width: 52, height: 52, borderRadius: 26,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 1,
-  },
-  actionLabel: { fontFamily: 'Rajdhani-Bold', fontSize: 14, letterSpacing: 1.5 },
+  actionsRow:    { flexDirection: 'row', backgroundColor: '#0F1219', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', marginBottom: 14, overflow: 'hidden' },
+  actionBtn:     { flex: 1, alignItems: 'center', paddingVertical: 20, gap: 10 },
+  actionIcon:    { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  actionLabel:   { fontFamily: 'Rajdhani-Bold', fontSize: 14, letterSpacing: 1.5 },
   actionDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginVertical: 16 },
 
   /* Trio */
-  trioRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  trioCard: {
-    flex: 1, backgroundColor: '#0F1219', borderRadius: 14,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-    padding: 14, alignItems: 'center',
-  },
+  trioRow:   { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  trioCard:  { flex: 1, backgroundColor: '#0F1219', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', padding: 14, alignItems: 'center' },
   trioValue: { fontFamily: 'Rajdhani-Bold', fontSize: 26, letterSpacing: 0.5 },
   trioLabel: { fontFamily: 'Inter-Regular', fontSize: 9, color: T.muted, fontWeight: '600', textAlign: 'center', marginTop: 2 },
 
   /* History */
-  historyBlock: {
-    backgroundColor: '#0F1219', borderRadius: 16,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', padding: 18,
-  },
-  sectionTitle: {
-    fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted,
-    fontWeight: '800', letterSpacing: 2, marginBottom: 14,
-  },
-  filterChip: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
+  historyBlock:  { backgroundColor: '#0F1219', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', padding: 18 },
+  historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  sectionTitle:  { fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted, fontWeight: '800', letterSpacing: 2 },
+
+  filterChip:       { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', backgroundColor: 'rgba(255,255,255,0.03)' },
   filterChipActive: { backgroundColor: T.gold, borderColor: T.gold },
-  filterText: { fontFamily: 'Inter-Regular', fontSize: 11, color: T.muted, fontWeight: '700' },
+  filterText:       { fontFamily: 'Inter-Regular', fontSize: 11, color: T.muted, fontWeight: '700' },
   filterTextActive: { color: '#000' },
 
-  emptyState: { alignItems: 'center', paddingVertical: 32, gap: 10 },
-  emptyText: { fontFamily: 'Inter-Regular', fontSize: 13, color: T.muted },
+  emptyState:   { alignItems: 'center', paddingVertical: 32, gap: 8 },
+  emptyText:    { fontFamily: 'Rajdhani-Bold', fontSize: 16, color: '#EEEEF5' },
+  emptySubText: { fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted, textAlign: 'center' },
 
-  txRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)',
-  },
-  txIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  txInfo: { flex: 1 },
-  txLabel: { fontFamily: 'Inter-Regular', fontSize: 13, color: '#EEEEF5', fontWeight: '600' },
-  txGame: { fontFamily: 'Inter-Regular', fontSize: 11, color: T.muted, marginTop: 2 },
+  txRow:    { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },
+  txIcon:   { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  txInfo:   { flex: 1 },
+  txLabel:  { fontFamily: 'Inter-Regular', fontSize: 13, color: '#EEEEF5', fontWeight: '600' },
+  txDate:   { fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted, marginTop: 2 },
+  txRight:  { alignItems: 'flex-end', gap: 2 },
   txAmount: { fontFamily: 'JetBrainsMono-Regular', fontSize: 14, fontWeight: '700' },
+  txBalance:{ fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted },
+
+  /* ── MODAL ── */
+  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.75)' },
+  modalKAV:     { position: 'absolute', bottom: 0, left: 0, right: 0 },
+  modalSheet:   {
+    backgroundColor: '#0C0E15', borderTopLeftRadius: 28,
+    borderTopRightRadius: 28, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)', borderBottomWidth: 0,
+    paddingHorizontal: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.5, shadowRadius: 30, elevation: 30,
+  },
+  modalHandle:     { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.12)', alignSelf: 'center', marginTop: 12, marginBottom: 6 },
+  modalHeader:     { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)', marginBottom: 20 },
+  modalHeaderIcon: { width: 44, height: 44, borderRadius: 13, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  modalTitle:      { fontFamily: 'Rajdhani-Bold', fontSize: 22, letterSpacing: 1 },
+  modalSoldeDispo: { fontFamily: 'Inter-Regular', fontSize: 11, color: T.muted, marginTop: 2 },
+  modalClose:      { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)', justifyContent: 'center', alignItems: 'center' },
+  modalLabel:      { fontFamily: 'Inter-Regular', fontSize: 9, color: T.muted, fontWeight: '800', letterSpacing: 2, marginBottom: 10 },
+
+  quickAmounts: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  quickAmountChip: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center' },
+  quickAmountText: { fontFamily: 'JetBrainsMono-Regular', fontSize: 12, color: T.muted, fontWeight: '700' },
+
+  amountInputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0D0F14', borderRadius: 14, borderWidth: 1.5, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 20 },
+  amountInput:     { flex: 1, fontFamily: 'Rajdhani-Bold', fontSize: 32, color: '#FFFFFF', padding: 0 },
+  amountCurrency:  { fontFamily: 'Inter-Regular', fontSize: 14, color: T.muted, fontWeight: '700' },
+
+  methodsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  methodCard: { flex: 1, backgroundColor: '#0F1219', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 12, alignItems: 'center', gap: 6 },
+  methodEmoji:{ fontSize: 22 },
+  methodLabel:{ fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted, fontWeight: '700', textAlign: 'center' },
+
+  confirmSection: { alignItems: 'center', paddingVertical: 20, gap: 16, marginBottom: 8 },
+  confirmIcon:    { width: 72, height: 72, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  confirmTitle:   { fontFamily: 'Rajdhani-Bold', fontSize: 24, color: '#EEEEF5' },
+  confirmDetails: { width: '100%', backgroundColor: '#0F1219', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', padding: 16, gap: 0 },
+  confirmRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },
+  confirmLabel:   { fontFamily: 'Inter-Regular', fontSize: 13, color: T.muted },
+  confirmValue:   { fontFamily: 'JetBrainsMono-Regular', fontSize: 13, color: '#EEEEF5', fontWeight: '700' },
+
+  successSection: { alignItems: 'center', paddingVertical: 32, gap: 12 },
+  successIcon:    { width: 80, height: 80, borderRadius: 20, backgroundColor: T.success + '12', justifyContent: 'center', alignItems: 'center' },
+  successTitle:   { fontFamily: 'Rajdhani-Bold', fontSize: 24, color: '#EEEEF5' },
+  successAmount:  { fontFamily: 'Rajdhani-Bold', fontSize: 32, color: T.success },
+
+  modalActionBtn:     { borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  modalActionBtnText: { fontFamily: 'Rajdhani-Bold', fontSize: 17, color: '#000', letterSpacing: 2 },
+  modalBackBtn:       { alignItems: 'center', paddingVertical: 12 },
+  modalBackText:      { fontFamily: 'Inter-Regular', fontSize: 13, color: T.muted },
 });

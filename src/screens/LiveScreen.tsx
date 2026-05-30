@@ -80,7 +80,14 @@ export default function LiveScreen() {
   const route      = useRoute();
   const insets     = useSafeAreaInsets();
 
-  const { defi, gameKey, mise, user } = route.params || {};
+const {
+  defi, gameKey, mise, user,
+  isViral      = false,   // ✅ nouveau
+  isChallenger = false,   // ✅ nouveau
+  viralDefiId  = null,    // ✅ nouveau
+  creatorPerf  = null,    // ✅ nouveau
+} = route.params || {};
+
   const config = getExerciseConfig(defi?.id);
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -201,6 +208,26 @@ export default function LiveScreen() {
     setFeedback('↩️ Corrigé');
   };
 
+  {/* ✅ Perf du Joueur 1 à battre */}
+{isChallenger && creatorPerf && (
+  <View style={styles.creatorPerfBar}>
+    <Text style={styles.creatorPerfLabel}>À BATTRE</Text>
+    <Text style={styles.creatorPerfValue}>
+      {isPlank
+        ? `${creatorPerf.reps || creatorPerf.time || 0}s`
+        : `${creatorPerf.reps || 0} reps`
+      }
+    </Text>
+    {/* Indicateur si en tête */}
+    {((isPlank  && repCount > (creatorPerf.reps || 0)) ||
+      (!isPlank && repCount > (creatorPerf.reps || 0))) && (
+      <View style={styles.leadingBadge}>
+        <Text style={styles.leadingBadgeText}>🔥 EN TÊTE</Text>
+      </View>
+    )}
+  </View>
+)}
+
   /* ── Toggle planche ── */
   const togglePlank = () => {
     if (!isActive || isPaused) return;
@@ -228,14 +255,79 @@ export default function LiveScreen() {
   }, [isPaused, startTimer]);
 
   /* ── Terminer ── */
-  const handleFinish = useCallback((finalReps = repRef.current) => {
-    if (isFinished) return;
-    setIsFinished(true);
-    clearInterval(timerRef.current);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  // Remplace l'intégralité de handleFinish par :
+const handleFinish = useCallback((finalReps = repRef.current) => {
+  if (isFinished) return;
+  setIsFinished(true);
+  clearInterval(timerRef.current);
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const success = finalReps >= targetReps;
-    setTimeout(() => {
+  const success     = finalReps >= targetReps;
+  const performance = {
+    reps: finalReps,
+    time: elapsedRef.current,
+    unit: isPlank ? 'sec' : 'reps',
+  };
+
+  setTimeout(async () => {
+    if (isViral && viralDefiId && isChallenger) {
+      // ✅ Joueur 2 — sauvegarder + naviguer vers résultat viral
+      try {
+        const { supabase } = require('../utils/SupabaseClients');
+        await supabase
+          .from('viral_defis')
+          .update({
+            challenger_id:           user?.id,
+            challenger_username:     user?.username,
+            challenger_performance:  performance,
+            challenger_completed_at: new Date().toISOString(),
+          })
+          .eq('id', viralDefiId);
+      } catch (e) { console.error(e); }
+
+      navigation.replace('ViralResult', {
+        viralDefiId,
+        challengerPerf: performance,
+        creatorPerf,
+        defi,
+        mise,
+        user,
+      });
+
+    } else if (isViral && !isChallenger) {
+      // ✅ Joueur 1 — créer le défi viral puis partager
+      try {
+        const { supabase } = require('../utils/SupabaseClients');
+        const { data: viralDefi } = await supabase
+          .from('viral_defis')
+          .insert({
+            creator_id:           user?.id,
+            creator_username:     user?.username,
+            game_key:             gameKey,
+            defi_id:              defi?.id,
+            defi_nom:             defi?.nom,
+            defi_cond:            defi?.cond,
+            defi_palier:          defi?.p,
+            mise:                 mise || 500,
+            cote:                 defi?.cote || 1.5,
+            creator_performance:  performance,
+            creator_completed_at: new Date().toISOString(),
+          })
+          .select().single();
+
+        navigation.replace('ViralShare', {
+          viralDefi,
+          performance,
+          defi,
+          user,
+        });
+      } catch (e) {
+        console.error(e);
+        navigation.replace('Result', { defi, gameKey, mise, user, result: { reps: finalReps, target: targetReps, time: elapsedRef.current, success, outcome: success ? 'win' : 'loss' } });
+      }
+
+    } else {
+      // ✅ Mode normal (inchangé)
       navigation.replace('Result', {
         defi, gameKey, mise, user,
         result: {
@@ -246,8 +338,9 @@ export default function LiveScreen() {
           outcome: success ? 'win' : 'loss',
         },
       });
-    }, 900);
-  }, [isFinished, targetReps, defi, gameKey, mise, user]);
+    }
+  }, 900);
+}, [isFinished, targetReps, defi, gameKey, mise, user, isViral, isChallenger, viralDefiId, creatorPerf]);
 
   /* ── Abandon ── */
   const handleAbandon = () => {
@@ -527,6 +620,33 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
+
+  // Ajoute dans StyleSheet.create({}) :
+creatorPerfBar: {
+  position: 'absolute', top: 100, left: 16, right: 16,
+  flexDirection: 'row', alignItems: 'center', gap: 10,
+  backgroundColor: 'rgba(240,192,64,0.15)',
+  borderRadius: 12, borderWidth: 1,
+  borderColor: 'rgba(240,192,64,0.35)',
+  padding: 10, zIndex: 15,
+},
+creatorPerfLabel: {
+  fontFamily: 'Inter-Regular', fontSize: 10,
+  color: '#F0C040', fontWeight: '800', letterSpacing: 1,
+},
+creatorPerfValue: {
+  fontFamily: 'JetBrainsMono-Regular', fontSize: 18,
+  color: '#F0C040', fontWeight: '700', flex: 1,
+},
+leadingBadge: {
+  backgroundColor: 'rgba(46,204,113,0.2)',
+  borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
+  borderWidth: 1, borderColor: 'rgba(46,204,113,0.4)',
+},
+leadingBadgeText: {
+  fontFamily: 'Inter-Regular', fontSize: 9,
+  color: '#2ECC71', fontWeight: '800',
+},
 
   /* Header */
   header: {

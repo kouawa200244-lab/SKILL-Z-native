@@ -19,7 +19,6 @@ import {
   shareViaWhatsApp,
   formatPerformance,
 } from '../utils/deepLinking';
-import * as Clipboard from 'expo-clipboard';
 
 const { width: W } = Dimensions.get('window');
 
@@ -63,7 +62,8 @@ export default function ViralShareScreen() {
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.2, 0.5] });
 
   const handleWhatsApp = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  try {
     const msg = generateWhatsAppMessage({
       defiId:      viralDefi?.id,
       creatorName: user?.username || 'Un joueur',
@@ -72,17 +72,25 @@ export default function ViralShareScreen() {
       performance,
     });
     await shareViaWhatsApp(msg);
-  };
+  } catch (_) {}
+};
 
   const handleCopyLink = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await Clipboard.setStringAsync(shareUrl);
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  try {
+    // Partage natif du lien directement
+    await Share.share({
+      message: shareUrl,
+      url:     shareUrl,
+    });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
+  } catch (_) {}
+};
 
   const handleShare = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  try {
     await Share.share({
       message: generateWhatsAppMessage({
         defiId:      viralDefi?.id,
@@ -93,7 +101,8 @@ export default function ViralShareScreen() {
       }),
       url: shareUrl,
     });
-  };
+  } catch (_) {}
+};
 
   return (
     <Animated.View style={[styles.screen, { paddingTop: insets.top, opacity: fadeAnim }]}>
