@@ -28,13 +28,15 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
     setMenuVisible(true);
   };
 
-  const selectChallenge = (type: 'gaming' | 'physique') => {
+  const selectChallenge = (type: 'gaming' | 'physique' | 'duel') => {
     setMenuVisible(false);
     if (type === 'gaming') {
       // On garde la même pile (HomeTab) mais on change d'écran
       navigation.navigate('HomeTab', { screen: 'GameSelect' });
-    } else {
-      navigation.navigate('HomeTab', { screen: 'PhysicalCategory' });
+    } else if (type === 'physique') {
+      navigation.navigate('HomeTab', { screen: 'PhysicalChallenges' });
+    } else if (type === 'duel') {
+      navigation.navigate('HomeTab', { screen: 'DuoLobby',  });
     }
   };
 
@@ -70,6 +72,13 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
             >
               <Dumbbell size={24} color="#FF6B00" />
               <Text style={styles.menuItemText}>Défi Physique</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, { backgroundColor: '#A855F720' }]}
+              onPress={() => selectChallenge('duel')}
+            >
+              <Gamepad2 size={24} color="#A855F7" />
+              <Text style={styles.menuItemText}>Défi DUEL</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

@@ -24,6 +24,11 @@ export default function App() {
     'Inter-Regular': Inter_400Regular,
     'JetBrainsMono-Regular': JetBrainsMono_400Regular,
   });
+  const handleLogout = async () => {
+  await AsyncStorage.removeItem('skillz_user');
+  await AsyncStorage.removeItem('skillz_temp_otp');
+  setUser(null);
+};
 
   useEffect(() => {
     AsyncStorage.getItem('skillz_user').then(s => {
@@ -50,4 +55,5 @@ export default function App() {
     </NavigationContainer>
   </SafeAreaProvider>
   );
+  {user ? <AppNavigator onLogout={handleLogout} /> : <AuthScreen onLogin={handleLogin} />}
 }

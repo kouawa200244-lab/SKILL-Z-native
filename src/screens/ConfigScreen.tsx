@@ -10,13 +10,13 @@ import {
   ArrowLeft, HelpCircle, Clock, Shield,
   TrendingUp, Zap, Plus, Layers,
 } from 'lucide-react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T } from '../utils/designTokens';
 import { fmt } from '../utils/helpers';
 import { GAMES } from '../constants/games';
 import { PALIERS } from '../constants/paliers';
 import { coteCol } from '../utils/helpers';
-import { useNavigation, useRoute } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { addToQueue } from '../utils/queueService'; // ✅ ajoute cet import
 

@@ -1,7 +1,6 @@
 // @ts-nocheck
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Easing } from 'react-native';
 
 import MainTabs         from './MainTabs';
 import GameSelectScreen from '../screens/GameSelectScreen';
@@ -20,54 +19,53 @@ import ViralResultScreen   from '../screens/ViralResultScreen';
 
 const Stack = createNativeStackNavigator();
 
-/* ── Presets d'animation ── */
-const RIGHT  = { headerShown: false, animation: 'slide_from_right',   animationDuration: 220 };
-const BOTTOM = { headerShown: false, animation: 'slide_from_bottom',  animationDuration: 260 };
-const FADE   = { headerShown: false, animation: 'fade',               animationDuration: 250 };
-const NONE   = { headerShown: false, animation: 'none' };
-
-export default function AppNavigator() {
+export default function AppNavigator({ onLogout }) {
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown:       false,
-        animation:         'slide_from_right',
-        animationDuration: 220,           // ✅ réduit pour moins de lag perçu
-        gestureEnabled:    true,
-        gestureDirection:  'horizontal',
-        contentStyle:      { backgroundColor: '#0B0E13' },
-      }}
-    >
-      {/* ── Tabs ── */}
-      <Stack.Screen
-        name="MainTabs"
-        component={MainTabs}
-        options={FADE}
-      />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {/* Tab bar VISIBLE — on passe onLogout via la fonction fléchée */}
+      <Stack.Screen name="MainTabs">
+        {(props) => <MainTabs {...props} onLogout={onLogout} />}
+      </Stack.Screen>
 
-      {/* ── Solo ── */}
-      <Stack.Screen name="GameSelect"  component={GameSelectScreen}  options={RIGHT}  />
-      <Stack.Screen name="DefiSelect"  component={DefiSelectScreen}  options={RIGHT}  />
-      <Stack.Screen name="Config"      component={ConfigScreen}      options={BOTTOM} />
-      <Stack.Screen name="Live"        component={LiveScreen}        options={FADE}   />
+      {/* Tab bar CACHÉE — mode Duel uniquement */}
+      <Stack.Screen
+        name="DuoLobby"
+        component={DuoLobbyScreen}
+        options={{ animation: 'slide_from_bottom', animationDuration: 320 }}
+      />
+      <Stack.Screen
+        name="DuoActive"
+        component={DuelActiveScreen}
+        options={{ animation: 'fade', animationDuration: 400 }}
+      />
+      <Stack.Screen
+        name="DuoConfig"
+        component={DuoConfigScreen}
+        options={{ animation: 'slide_from_bottom', animationDuration: 320 }}
+      />
+      <Stack.Screen
+        name="DuelPick"
+        component={DuelPickScreen}
+        options={{ animation: 'slide_from_bottom', animationDuration: 320 }}
+      />
+      <Stack.Screen
+        name="DuelJoin"
+        component={DuelActiveScreen}
+        options={{ animation: 'fade', animationDuration: 300 }}
+      />
+      <Stack.Screen
+        name="Live"
+        component={LiveScreen}
+        options={{ animation: 'fade', animationDuration: 400 }}
+      />
       <Stack.Screen
         name="Result"
         component={ResultScreen}
-        options={{ ...FADE, gestureEnabled: false }}
+        options={{
+          animation: 'fade',
+          animationDuration: 400,
+        }}
       />
-
-      {/* ── Duel ── */}
-      <Stack.Screen name="DuelPick"    component={DuelPickScreen}    options={RIGHT}  />
-      <Stack.Screen name="DuoConfig"  component={DuoConfigScreen}  options={BOTTOM} />
-      <Stack.Screen name="DuelLobby"   component={DuoLobbyScreen}   options={BOTTOM} />
-      <Stack.Screen name="DuelActive"    component={DuelActiveScreen}    options={FADE}   />
-      <Stack.Screen name="DuelJoin"    component={DuelActiveScreen}    options={FADE}   />
-      <Stack.Screen name="DefiChallenge" component={DefiChallengeScreen} options={{ ...FADE, gestureEnabled: false }} />
-      <Stack.Screen name="ViralShare"    component={ViralShareScreen}    options={BOTTOM} />
-      <Stack.Screen name="ViralResult"   component={ViralResultScreen}   options={{ ...FADE, gestureEnabled: false }} />
-
-      {/* ── Historique ── */}
-      <Stack.Screen name="Historique"  component={HistoryScreen}  options={RIGHT}  />
     </Stack.Navigator>
   );
 }

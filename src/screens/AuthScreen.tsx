@@ -7,77 +7,15 @@ import {
   ActivityIndicator, Alert,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import {
-  Eye, EyeOff, Zap, Mail, Lock,
-  User, ArrowRight, Shield, Phone,
-  CheckCircle, RefreshCw,
-} from 'lucide-react-native';
+import { Phone, Zap, Shield, ArrowRight, RefreshCw, CheckCircle } from 'lucide-react-native';
 import { T } from '../utils/designTokens';
-import { supabase } from '../supabaseClient';
-import { sendOTP, generateOTP } from '../utils/smsService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { height: H, width: W } = Dimensions.get('window');
 
-/* ══════════════════════════════════════
-   INPUT FIELD CUSTOM
-══════════════════════════════════════ */
-function InputField({
-  icon: Icon, placeholder, value, onChangeText,
-  secureTextEntry, keyboardType, rightIcon, onRightPress,
-  editable = true,
-}) {
-  const focusAnim = useRef(new Animated.Value(0)).current;
-
-  const onFocus = () => Animated.spring(focusAnim, {
-    toValue: 1, tension: 120, friction: 8, useNativeDriver: false,
-  }).start();
-
-  const onBlur = () => Animated.spring(focusAnim, {
-    toValue: 0, tension: 120, friction: 8, useNativeDriver: false,
-  }).start();
-
-  const borderColor = focusAnim.interpolate({
-    inputRange:  [0, 1],
-    outputRange: ['rgba(255,255,255,0.07)', T.gaming],
-  });
-  const bgColor = focusAnim.interpolate({
-    inputRange:  [0, 1],
-    outputRange: ['#0D0F14', '#0D1A20'],
-  });
-
-  return (
-    <Animated.View style={[
-      styles.inputWrap,
-      { borderColor, backgroundColor: bgColor },
-      !editable && styles.inputDisabled,
-    ]}>
-      <Icon size={16} color={editable ? T.muted : 'rgba(255,255,255,0.2)'} style={{ marginRight: 12 }} />
-      <TextInput
-        style={[styles.input, !editable && { color: T.muted }]}
-        placeholder={placeholder}
-        placeholderTextColor={T.muted}
-        value={value}
-        onChangeText={onChangeText}
-        secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType || 'default'}
-        autoCapitalize="none"
-        onFocus={onFocus}
-        onBlur={onBlur}
-        editable={editable}
-      />
-      {rightIcon && (
-        <TouchableOpacity onPress={onRightPress} style={{ padding: 4 }}>
-          {rightIcon}
-        </TouchableOpacity>
-      )}
-    </Animated.View>
-  );
-}
-
-/* ══════════════════════════════════════
-   OTP INPUT — 6 cases
-══════════════════════════════════════ */
+// ══════════════════════════════════════
+// OTP INPUT — 6 cases
+// ══════════════════════════════════════
 function OTPInput({ value, onChange, hasError }) {
   const inputs = useRef([]);
 
@@ -120,40 +58,26 @@ function OTPInput({ value, onChange, hasError }) {
   );
 }
 
-/* ══════════════════════════════════════
-   AUTH SCREEN PRINCIPAL
-══════════════════════════════════════ */
+// ══════════════════════════════════════
+// AUTH SCREEN — TÉLÉPHONE + OTP UNIQUEMENT
+// ══════════════════════════════════════
 export default function AuthScreen({ onLogin }) {
-  // Mode
-  const [mode,    setMode]    = useState('login'); // 'login' | 'register'
-  const [step,    setStep]    = useState(1);        // 1=infos, 2=otp, 3=done
-
-  // Champs
-  const [email,    setEmail]    = useState('');
-  const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [phone,    setPhone]    = useState('');
-  const [showPwd,  setShowPwd]  = useState(false);
-
-  // OTP
-  const [otpCode,     setOtpCode]     = useState('');
+  const [step,    setStep]    = useState(1);  // 1 = téléphone, 2 = OTP
+  const [phone,   setPhone]   = useState('');
+  const [otpCode, setOtpCode] = useState('');
   const [otpExpected, setOtpExpected] = useState('');
-  const [otpError,    setOtpError]    = useState(false);
-  const [countdown,   setCountdown]   = useState(0);
-
-  // UI
-  const [loading,     setLoading]     = useState(false);
-  const [otpLoading,  setOtpLoading]  = useState(false);
-  const [error,       setError]       = useState('');
+  const [otpError, setOtpError] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
 
   // Animations
-  const fadeAnim    = useRef(new Animated.Value(0)).current;
-  const slideAnim   = useRef(new Animated.Value(60)).current;
-  const logoScale   = useRef(new Animated.Value(0.7)).current;
-  const shakeAnim   = useRef(new Animated.Value(0)).current;
-  const glowAnim    = useRef(new Animated.Value(0)).current;
-  const orb1Anim    = useRef(new Animated.Value(0)).current;
-  const stepAnim    = useRef(new Animated.Value(0)).current;
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(60)).current;
+  const logoScale = useRef(new Animated.Value(0.7)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim  = useRef(new Animated.Value(0)).current;
+  const orb1Anim  = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -183,7 +107,6 @@ export default function AuthScreen({ onLogin }) {
   const orb1Y      = orb1Anim.interpolate({ inputRange: [0, 1], outputRange: [0, -20] });
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.7] });
 
-  /* ── Shake error ── */
   const shake = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     Animated.sequence([
@@ -195,258 +118,79 @@ export default function AuthScreen({ onLogin }) {
     ]).start();
   };
 
-  /* ── Transition step ── */
-  const goToStep = (n) => {
-    Animated.sequence([
-      Animated.timing(stepAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
-      Animated.timing(stepAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
-    ]).start(() => setStep(n));
-  };
-
-  /* ── Switch mode ── */
-  const switchMode = (m) => {
-    setError('');
-    setStep(1);
-    setOtpCode('');
-    setOtpExpected('');
-    setOtpError(false);
-    setMode(m);
-  };
-
-  /* ══════════════════════════════════════
-     CONNEXION
-  ══════════════════════════════════════ */
-  const handleLogin = async () => {
-    if (!email.trim() || !password) {
-      setError('Remplis tous les champs.'); shake(); return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email:    email.trim().toLowerCase(),
-        password,
-      });
-      if (signInError) throw signInError;
-      if (!data.user)  throw new Error('Connexion échouée.');
-
-      const [profileRes, walletRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', data.user.id).single(),
-        supabase.from('wallets').select('*').eq('user_id', data.user.id).single(),
-      ]);
-
-      // Créer wallet si absent
-      if (!walletRes.data) {
-        await supabase.from('wallets').insert({
-          user_id: data.user.id, balance: 1000, total_depots: 1000,
-        });
-        await supabase.from('transactions').insert({
-          user_id: data.user.id, type: 'bonus', amount: 1000,
-          balance_before: 0, balance_after: 1000,
-          label: 'Bonus de bienvenue SKILL\'Z 🎉',
-        });
-      }
-
-      const session = {
-        id:       data.user.id,
-        email:    data.user.email,
-        username: profileRes.data?.username || data.user.email.split('@')[0],
-        rank:     profileRes.data?.rank     || 'RANG BRONZE',
-        xp:       profileRes.data?.xp       || 0,
-        balance:  walletRes.data?.balance   || 1000,
-        phone:    profileRes.data?.phone    || '',
-        token:    data.session?.access_token,
-      };
-      await AsyncStorage.setItem('skillz_user', JSON.stringify(session));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onLogin(session);
-
-    } catch (e) {
-      const msg = e.message?.includes('Invalid login')
-        ? 'Email ou mot de passe incorrect.'
-        : e.message || 'Erreur de connexion.';
-      setError(msg);
-      shake();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* ══════════════════════════════════════
-     ÉTAPE 1 — Valider les infos
-  ══════════════════════════════════════ */
-  const handleStep1 = async () => {
-    if (!username.trim()) { setError('Choisis un nom d\'utilisateur.'); shake(); return; }
-    if (!email.trim())    { setError('Entre ton adresse email.');        shake(); return; }
-    if (password.length < 6) { setError('Mot de passe : 6 caractères min.'); shake(); return; }
-    if (!phone.trim() || phone.replace(/\D/g, '').length < 9) {
-      setError('Entre un numéro valide (ex: 237674742929)'); shake(); return;
-    }
-
-    setLoading(true);
-    setError('');
-    try {
-      // Vérifier username dispo
-      const { data: existing } = await supabase
-        .from('profiles').select('id').eq('username', username.trim()).single();
-      if (existing) { setError('Nom d\'utilisateur déjà pris.'); shake(); return; }
-
-      // Vérifier email dispo
-      const { data: existingEmail } = await supabase
-        .from('profiles').select('id').eq('email', email.trim().toLowerCase()).single();
-      if (existingEmail) { setError('Email déjà utilisé.'); shake(); return; }
-
-      // Envoyer OTP
-      await handleSendOTP();
-      goToStep(2);
-
-    } catch (e) {
-      if (e.message !== 'OTP_SENT') {
-        setError(e.message || 'Erreur. Réessaie.');
-        shake();
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* ══════════════════════════════════════
-     ENVOI OTP
-  ══════════════════════════════════════ */
+  // ══════════════════════════════════════
+  // ÉTAPE 1 — Envoyer OTP
+  // ══════════════════════════════════════
   const handleSendOTP = async () => {
-    setOtpLoading(true);
-    setOtpError(false);
-    setOtpCode('');
-    try {
-      const code     = generateOTP();
-      const phoneNum = phone.replace(/[\s\-\+]/g, '');
-      await sendOTP(phoneNum, code);
-      setOtpExpected(code);
-      setCountdown(60); // 60s avant renvoi
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) {
-      setError('Impossible d\'envoyer le SMS. Vérifie le numéro.');
+    const cleanPhone = phone.replace(/[\s\-\+]/g, '');
+    if (cleanPhone.length < 9) {
+      setError('Entre un numéro valide (ex: 237674742929)');
       shake();
-      throw e;
-    } finally {
-      setOtpLoading(false);
+      return;
     }
-  };
 
-  const handleResendOTP = async () => {
-    if (countdown > 0) return;
+    setLoading(true);
     setError('');
-    try {
-      await handleSendOTP();
-    } catch (_) {}
+
+    // MODE DEV : OTP fixe 123456
+    const code = '123456';
+    setOtpExpected(code);
+
+    // Simuler l'envoi SMS (1 seconde)
+    setTimeout(() => {
+      setStep(2);
+      setLoading(false);
+      setCountdown(60);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }, 1000);
   };
 
-  /* ══════════════════════════════════════
-     ÉTAPE 2 — Vérifier OTP
-  ══════════════════════════════════════ */
-  const handleVerifyOTP = () => {
+  const handleResendOTP = () => {
+    if (countdown > 0) return;
+    setOtpCode('');
+    setOtpError(false);
+    setError('');
+    handleSendOTP();
+  };
+
+  // ══════════════════════════════════════
+  // ÉTAPE 2 — Vérifier OTP et connecter
+  // ══════════════════════════════════════
+  const handleVerifyOTP = async () => {
     if (otpCode.length < 6) {
-      setOtpError(true); shake();
+      setOtpError(true);
+      shake();
       setError('Entre le code à 6 chiffres.');
       return;
     }
     if (otpCode !== otpExpected) {
-      setOtpError(true); shake();
+      setOtpError(true);
+      shake();
       setError('Code incorrect. Réessaie.');
       return;
     }
-    setOtpError(false);
-    setError('');
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    handleRegister();
-  };
 
-  /* ══════════════════════════════════════
-     INSCRIPTION FINALE
-  ══════════════════════════════════════ */
-  const handleRegister = async () => {
     setLoading(true);
     setError('');
-    try {
-      // Créer compte Supabase Auth
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email:    email.trim().toLowerCase(),
-        password,
-        options: {
-          data: {
-            username: username.trim(),
-            phone:    phone.replace(/[\s\-\+]/g, ''),
-          },
-        },
-      });
-      if (signUpError) throw signUpError;
-      if (!data.user)  throw new Error('Erreur création de compte.');
 
-      // Attendre le trigger SQL (profil + wallet créés auto)
-      await new Promise(r => setTimeout(r, 900));
+    const cleanPhone = phone.replace(/[\s\-\+]/g, '');
+    const formattedPhone = `+${cleanPhone}`;
 
-      const [profileRes, walletRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', data.user.id).single(),
-        supabase.from('wallets').select('*').eq('user_id', data.user.id).single(),
-      ]);
+    // Créer l'utilisateur localement (pas d'auth Supabase pour le MVP)
+    const user = {
+      id: Date.now().toString(),
+      phone: formattedPhone,
+      username: `Joueur_${cleanPhone.slice(-4)}`,
+      rank: 'RANG BRONZE',
+      balance: 5000,
+      createdAt: new Date().toISOString(),
+    };
 
-      const session = {
-        id:       data.user.id,
-        email:    data.user.email,
-        username: profileRes.data?.username || username.trim(),
-        rank:     profileRes.data?.rank     || 'RANG BRONZE',
-        xp:       profileRes.data?.xp       || 0,
-        balance:  walletRes.data?.balance   || 1000,
-        phone:    phone.replace(/[\s\-\+]/g, ''),
-        token:    data.session?.access_token,
-      };
-
-      await AsyncStorage.setItem('skillz_user', JSON.stringify(session));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onLogin(session);
-
-    } catch (e) {
-      const msg = e.message?.includes('already registered')
-        ? 'Cet email est déjà utilisé.'
-        : e.message || 'Erreur lors de l\'inscription.';
-      setError(msg);
-      shake();
-      goToStep(1);
-    } finally {
-      setLoading(false);
-    }
+    await AsyncStorage.setItem('skillz_user', JSON.stringify(user));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onLogin(user);
+    setLoading(false);
   };
-
-  const handleSubmit = () => {
-    setError('');
-    if (mode === 'login') return handleLogin();
-    if (step === 1)       return handleStep1();
-    if (step === 2)       return handleVerifyOTP();
-  };
-
-  /* ── Indicateur d'étape ── */
-  const StepIndicator = () => (
-    <View style={styles.steps}>
-      {[1, 2].map(s => (
-        <View key={`step_${s}`} style={styles.stepRow}>
-          <View style={[
-            styles.stepDot,
-            step >= s
-              ? { backgroundColor: T.gaming, borderColor: T.gaming }
-              : { backgroundColor: 'transparent', borderColor: 'rgba(255,255,255,0.15)' }
-          ]}>
-            {step > s
-              ? <CheckCircle size={10} color="#000" />
-              : <Text style={[styles.stepNum, step === s && { color: '#000' }]}>{s}</Text>
-            }
-          </View>
-          {s < 2 && (
-            <View style={[styles.stepLine, step > s && { backgroundColor: T.gaming }]} />
-          )}
-        </View>
-      ))}
-    </View>
-  );
 
   return (
     <KeyboardAvoidingView
@@ -455,7 +199,7 @@ export default function AuthScreen({ onLogin }) {
     >
       <StatusBar barStyle="light-content" />
 
-      {/* Orbes */}
+      {/* Orbes décoratives */}
       <Animated.View style={[styles.orb1, { transform: [{ translateY: orb1Y }] }]} />
       <View style={styles.orb2} />
       <View style={styles.orb3} />
@@ -487,114 +231,60 @@ export default function AuthScreen({ onLogin }) {
         ]}>
           <View style={styles.cardAccent} />
 
-          {/* Toggle mode */}
-          <View style={styles.modeToggle}>
-            {['login', 'register'].map(m => (
-              <TouchableOpacity
-                key={m}
-                style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
-                onPress={() => switchMode(m)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>
-                  {m === 'login' ? 'CONNEXION' : 'INSCRIPTION'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* ── LOGIN ── */}
-          {mode === 'login' && (
+          {/* ── ÉTAPE 1 : TÉLÉPHONE ── */}
+          {step === 1 && (
             <>
-              <Text style={styles.formTitle}>Bon retour, champion 👊</Text>
-              <Text style={styles.formSub}>Connecte-toi pour retrouver tes défis</Text>
+              <Text style={styles.formTitle}>Bienvenue sur SKILL'Z ⚡</Text>
+              <Text style={styles.formSub}>
+                Entre ton numéro de téléphone pour recevoir un code de vérification.
+              </Text>
 
               <View style={styles.fields}>
-                <InputField
-                  icon={Mail} placeholder="Adresse email"
-                  value={email} onChangeText={setEmail}
-                  keyboardType="email-address"
-                />
-                <InputField
-                  icon={Lock} placeholder="Mot de passe"
-                  value={password} onChangeText={setPassword}
-                  secureTextEntry={!showPwd}
-                  rightIcon={showPwd
-                    ? <EyeOff size={16} color={T.muted} />
-                    : <Eye    size={16} color={T.muted} />
-                  }
-                  onRightPress={() => setShowPwd(!showPwd)}
-                />
-              </View>
-
-              <TouchableOpacity style={styles.forgotBtn}>
-                <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {/* ── REGISTER STEP 1 — Informations ── */}
-          {mode === 'register' && step === 1 && (
-            <>
-              <View style={styles.stepHeader}>
-                <StepIndicator />
-                <Text style={styles.formTitle}>Rejoins l'arène ⚡</Text>
-                <Text style={styles.formSub}>Crée ton compte et reçois 1 000 FCFA offerts 🎁</Text>
-              </View>
-
-              {/* Bonus badge */}
-              <View style={styles.bonusBadge}>
-                <Text style={styles.bonusText}>🎉 1 000 FCFA offerts à l'inscription</Text>
-              </View>
-
-              <View style={styles.fields}>
-                <InputField
-                  icon={User} placeholder="Nom d'utilisateur"
-                  value={username} onChangeText={setUsername}
-                />
-                <InputField
-                  icon={Mail} placeholder="Adresse email"
-                  value={email} onChangeText={setEmail}
-                  keyboardType="email-address"
-                />
-                <InputField
-                  icon={Lock} placeholder="Mot de passe (6 caractères min.)"
-                  value={password} onChangeText={setPassword}
-                  secureTextEntry={!showPwd}
-                  rightIcon={showPwd
-                    ? <EyeOff size={16} color={T.muted} />
-                    : <Eye    size={16} color={T.muted} />
-                  }
-                  onRightPress={() => setShowPwd(!showPwd)}
-                />
-
-                {/* Téléphone */}
-                <View style={styles.phoneSection}>
-                  <Text style={styles.phoneLabel}>NUMÉRO DE TÉLÉPHONE</Text>
-                  <Text style={styles.phoneSub}>Pour recevoir ton code de vérification SMS</Text>
-                  <InputField
-                    icon={Phone} placeholder="Ex: 237674742929"
-                    value={phone} onChangeText={setPhone}
+                <View style={styles.phoneInputWrap}>
+                  <Phone size={18} color={T.muted} style={{ marginRight: 12 }} />
+                  <TextInput
+                    style={styles.phoneInput}
+                    placeholder="Ex: 237674742929"
+                    placeholderTextColor={T.muted}
+                    value={phone}
+                    onChangeText={setPhone}
                     keyboardType="phone-pad"
+                    maxLength={15}
                   />
                 </View>
               </View>
+
+              {/* Bouton envoyer OTP */}
+              <TouchableOpacity
+                style={[styles.submitBtn, loading && { opacity: 0.7 }]}
+                onPress={handleSendOTP}
+                activeOpacity={0.85}
+                disabled={loading}
+              >
+                <View style={styles.submitBtnInner}>
+                  {loading ? (
+                    <ActivityIndicator color="#000" size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.submitBtnText}>RECEVOIR LE CODE</Text>
+                      <ArrowRight size={18} color="#000" />
+                    </>
+                  )}
+                </View>
+              </TouchableOpacity>
             </>
           )}
 
-          {/* ── REGISTER STEP 2 — OTP ── */}
-          {mode === 'register' && step === 2 && (
+          {/* ── ÉTAPE 2 : OTP ── */}
+          {step === 2 && (
             <>
-              <View style={styles.stepHeader}>
-                <StepIndicator />
-                <Text style={styles.formTitle}>Vérifie ton numéro 📱</Text>
-                <Text style={styles.formSub}>
-                  Code envoyé au{'\n'}
-                  <Text style={{ color: T.gaming, fontWeight: '700' }}>
-                    +{phone.replace(/[\s\-\+]/g, '')}
-                  </Text>
+              <Text style={styles.formTitle}>Vérifie ton numéro 📱</Text>
+              <Text style={styles.formSub}>
+                Code envoyé au{' '}
+                <Text style={{ color: T.gaming, fontWeight: '700' }}>
+                  +{phone.replace(/[\s\-\+]/g, '')}
                 </Text>
-              </View>
+              </Text>
 
               {/* OTP 6 cases */}
               <View style={styles.otpSection}>
@@ -611,9 +301,7 @@ export default function AuthScreen({ onLogin }) {
 
               {/* Renvoi OTP */}
               <View style={styles.resendRow}>
-                {otpLoading ? (
-                  <ActivityIndicator size="small" color={T.gaming} />
-                ) : countdown > 0 ? (
+                {countdown > 0 ? (
                   <Text style={styles.resendWait}>
                     Renvoyer dans <Text style={{ color: T.gaming }}>{countdown}s</Text>
                   </Text>
@@ -632,6 +320,22 @@ export default function AuthScreen({ onLogin }) {
               >
                 <Text style={styles.changePhoneText}>← Changer le numéro</Text>
               </TouchableOpacity>
+
+              {/* Bouton vérifier */}
+              <TouchableOpacity
+                style={[styles.submitBtn, loading && { opacity: 0.7 }]}
+                onPress={handleVerifyOTP}
+                activeOpacity={0.85}
+                disabled={loading}
+              >
+                <View style={styles.submitBtnInner}>
+                  {loading ? (
+                    <ActivityIndicator color="#000" size="small" />
+                  ) : (
+                    <Text style={styles.submitBtnText}>VÉRIFIER & SE CONNECTER</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
             </>
           )}
 
@@ -642,62 +346,11 @@ export default function AuthScreen({ onLogin }) {
             </View>
           )}
 
-          {/* ── BOUTON SUBMIT ── */}
-          <TouchableOpacity
-            style={[styles.submitBtn, (loading || otpLoading) && { opacity: 0.7 }]}
-            onPress={handleSubmit}
-            activeOpacity={0.85}
-            disabled={loading || otpLoading}
-          >
-            <View style={styles.submitBtnInner}>
-              {loading ? (
-                <ActivityIndicator color="#000" size="small" />
-              ) : (
-                <>
-                  <Text style={styles.submitBtnText}>
-                    {mode === 'login'
-                      ? 'SE CONNECTER'
-                      : step === 1
-                        ? 'CONTINUER →'
-                        : 'VÉRIFIER & CRÉER MON COMPTE'
-                    }
-                  </Text>
-                  {!loading && mode === 'login' && (
-                    <ArrowRight size={18} color="#000" />
-                  )}
-                </>
-              )}
-            </View>
-          </TouchableOpacity>
-
-          {/* ── SÉPARATEUR ── */}
-          <View style={styles.separator}>
-            <View style={styles.sepLine} />
-            <Text style={styles.sepText}>ou</Text>
-            <View style={styles.sepLine} />
-          </View>
-
-          {/* ── SWITCH MODE ── */}
-          <TouchableOpacity
-            style={styles.switchBtn}
-            onPress={() => switchMode(mode === 'login' ? 'register' : 'login')}
-          >
-            <Text style={styles.switchText}>
-              {mode === 'login'
-                ? 'Pas encore de compte ? '
-                : 'Déjà un compte ? '
-              }
-              <Text style={styles.switchLink}>
-                {mode === 'login' ? "S'inscrire" : 'Se connecter'}
-              </Text>
-            </Text>
-          </TouchableOpacity>
-
           {/* ── SÉCURITÉ ── */}
           <View style={styles.securityBadge}>
             <Shield size={11} color={T.muted} />
             <Text style={styles.securityText}>
-              Connexion sécurisée · SMS via Infobip · Données chiffrées
+              Connexion sécurisée · Code OTP unique · Données chiffrées
             </Text>
           </View>
         </Animated.View>
@@ -706,9 +359,9 @@ export default function AuthScreen({ onLogin }) {
   );
 }
 
-/* ══════════════════════════════════════
-   STYLES
-══════════════════════════════════════ */
+// ══════════════════════════════════════
+// STYLES
+// ══════════════════════════════════════
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#080A0F' },
 
@@ -738,60 +391,33 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#0C0E14', borderRadius: 24,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    overflow: 'hidden',
+    overflow: 'hidden', paddingHorizontal: 18, paddingBottom: 20,
     shadowColor: '#000', shadowOffset: { width: 0, height: 24 },
     shadowOpacity: 0.5, shadowRadius: 40, elevation: 20,
   },
-  cardAccent: { height: 2, backgroundColor: T.gaming },
-
-  /* Toggle */
-  modeToggle: {
-    flexDirection: 'row', margin: 18, marginBottom: 0,
-    backgroundColor: '#080A0F', borderRadius: 14,
-    padding: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-  },
-  modeBtn:         { flex: 1, paddingVertical: 10, borderRadius: 11, alignItems: 'center' },
-  modeBtnActive:   { backgroundColor: T.gaming + '20', borderWidth: 1, borderColor: T.gaming + '50' },
-  modeBtnText:     { fontFamily: 'Inter-Regular', fontSize: 11, color: T.muted, fontWeight: '800', letterSpacing: 1.5 },
-  modeBtnTextActive:{ color: T.gaming },
-
-  /* Step indicator */
-  stepHeader: { marginTop: 20, marginHorizontal: 20 },
-  steps:      { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  stepRow:    { flexDirection: 'row', alignItems: 'center' },
-  stepDot:    {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 1.5, justifyContent: 'center', alignItems: 'center',
-  },
-  stepNum:    { fontFamily: 'Inter-Regular', fontSize: 10, color: T.muted, fontWeight: '800' },
-  stepLine:   { width: 32, height: 1.5, backgroundColor: 'rgba(255,255,255,0.1)', marginHorizontal: 4 },
+  cardAccent: { height: 2, backgroundColor: T.gaming, marginHorizontal: -18, marginBottom: 20 },
 
   /* Formulaire */
   formTitle: { fontFamily: 'Rajdhani-Bold', fontSize: 24, color: '#EEEEF5', letterSpacing: 0.5, marginTop: 10, marginBottom: 4 },
-  formSub:   { fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted, marginBottom: 16, lineHeight: 18 },
+  formSub:   { fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted, marginBottom: 20, lineHeight: 18 },
 
-  /* Bonus */
-  bonusBadge: {
-    marginHorizontal: 18, marginBottom: 14,
-    backgroundColor: T.gold + '12', borderWidth: 1,
-    borderColor: T.gold + '30', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 10,
+  fields: { gap: 12, marginBottom: 8 },
+
+  /* Phone input */
+  phoneInputWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    borderRadius: 14, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: '#0D0F14',
+    paddingHorizontal: 16, paddingVertical: 14,
   },
-  bonusText: { fontFamily: 'Inter-Regular', fontSize: 12, color: T.gold, fontWeight: '700', textAlign: 'center' },
-
-  /* Champs */
-  fields:       { paddingHorizontal: 18, gap: 12, marginBottom: 8 },
-  inputWrap:    { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14 },
-  inputDisabled:{ opacity: 0.5 },
-  input:        { flex: 1, fontFamily: 'Inter-Regular', fontSize: 14, color: '#EEEEF5', padding: 0 },
-
-  /* Phone */
-  phoneSection: { gap: 6 },
-  phoneLabel:   { fontFamily: 'Inter-Regular', fontSize: 9, color: T.muted, fontWeight: '800', letterSpacing: 2 },
-  phoneSub:     { fontFamily: 'Inter-Regular', fontSize: 11, color: T.muted },
+  phoneInput: {
+    flex: 1, fontFamily: 'Inter-Regular',
+    fontSize: 16, color: '#EEEEF5', padding: 0,
+  },
 
   /* OTP */
-  otpSection: { paddingHorizontal: 18, marginBottom: 16, marginTop: 8 },
+  otpSection: { marginBottom: 16 },
   otpRow:     { flexDirection: 'row', gap: 8, justifyContent: 'center' },
   otpBox:     {
     width: (W - 76) / 6, height: 52, borderRadius: 12,
@@ -809,16 +435,12 @@ const styles = StyleSheet.create({
   resendBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
   resendText: { fontFamily: 'Inter-Regular', fontSize: 12, color: T.gaming, fontWeight: '700' },
 
-  changePhoneBtn: { alignItems: 'center', marginBottom: 8 },
-  changePhoneText:{ fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted },
-
-  /* Forgot */
-  forgotBtn:  { alignSelf: 'flex-end', marginRight: 18, marginTop: 4, marginBottom: 4 },
-  forgotText: { fontFamily: 'Inter-Regular', fontSize: 12, color: T.gaming },
+  changePhoneBtn:  { alignItems: 'center', marginBottom: 8 },
+  changePhoneText: { fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted },
 
   /* Erreur */
   errorBox: {
-    marginHorizontal: 18, marginTop: 8,
+    marginTop: 12,
     backgroundColor: T.danger + '15', borderWidth: 1,
     borderColor: T.danger + '40', borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 10,
@@ -827,25 +449,26 @@ const styles = StyleSheet.create({
 
   /* Submit */
   submitBtn: {
-    marginHorizontal: 18, marginTop: 18,
+    marginTop: 16,
     backgroundColor: T.gold, borderRadius: 16,
     shadowColor: T.gold, shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.4, shadowRadius: 20, elevation: 10,
   },
-  submitBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16 },
-  submitBtnText:  { fontFamily: 'Rajdhani-Bold', fontSize: 18, color: '#000', letterSpacing: 2 },
-
-  /* Separator */
-  separator: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 18, marginTop: 20, gap: 12 },
-  sepLine:   { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
-  sepText:   { fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted },
-
-  /* Switch */
-  switchBtn:  { alignItems: 'center', marginTop: 16, paddingHorizontal: 18 },
-  switchText: { fontFamily: 'Inter-Regular', fontSize: 13, color: T.muted },
-  switchLink: { color: T.gaming, fontWeight: '700' },
+  submitBtnInner: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 10, paddingVertical: 16,
+  },
+  submitBtnText: {
+    fontFamily: 'Rajdhani-Bold', fontSize: 18, color: '#000', letterSpacing: 2,
+  },
 
   /* Security */
-  securityBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14, marginBottom: 20 },
-  securityText:  { fontFamily: 'Inter-Regular', fontSize: 10, color: 'rgba(255,255,255,0.2)', letterSpacing: 0.3 },
+  securityBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 6, marginTop: 20,
+  },
+  securityText: {
+    fontFamily: 'Inter-Regular', fontSize: 10,
+    color: 'rgba(255,255,255,0.2)', letterSpacing: 0.3,
+  },
 });
