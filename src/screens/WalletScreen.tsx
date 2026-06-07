@@ -17,6 +17,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { T } from '../utils/designTokens';
 import { fmt } from '../utils/helpers';
+import PaymentWebView from '../components/PaymentWebView';
+import { initiateDeposit, initiateWithdrawal } from '../services/paymentService';
+import { getCurrentUser, isValidUUID } from '../utils/getCurrentUser';
 import { supabase } from '../supabaseClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -34,17 +37,21 @@ function TransactionModal({ visible, type, walletBalance, userId, onClose, onSuc
   const [loading,  setLoading]  = useState(false);
   const [step,     setStep]     = useState(1); // 1=saisie, 2=confirmation, 3=succès
   const [method,   setMethod]   = useState(null);
+  const [webViewVisible, setWebViewVisible] = useState(false);
+  const [sessionUrl,     setSessionUrl]     = useState('');
+  const [pendingAmount,  setPendingAmount]  = useState(0);
+  const [pendingRef,     setPendingRef]     = useState('');
   const slideAnim = useRef(new Animated.Value(400)).current;
   const fadeAnim  = useRef(new Animated.Value(0)).current;
 
   const METHODS = type === 'deposit' ? [
     { key: 'wave',    label: 'Wave',         emoji: '🌊', color: '#00B8D9' },
-    { key: 'om',      label: 'Orange Money', emoji: '', color: '#FF6600' },
-    { key: 'mtn',     label: 'MTN Money',    emoji: '', color: '#FFCC00' },
+    { key: 'orange',      label: 'Orange Money', emoji: '🟠', color: '#FF6600' },
+    { key: 'mtn',     label: 'MTN Money',    emoji: '🟡', color: '#FFCC00' },
   ] : [
     { key: 'wave',    label: 'Wave',         emoji: '🌊', color: '#00B8D9' },
-    { key: 'om',      label: 'Orange Money', emoji: '', color: '#FF6600' },
-    { key: 'mtn',     label: 'MTN Money',    emoji: '', color: '#FFCC00' },
+    { key: 'orange',      label: 'Orange Money', emoji: '🟠', color: '#FF6600' },
+    { key: 'mtn',     label: 'MTN Money',    emoji: '🟡', color: '#FFCC00' },
   ];
 
   useEffect(() => {
@@ -79,43 +86,55 @@ function TransactionModal({ visible, type, walletBalance, userId, onClose, onSuc
     if (!method) {
       Alert.alert('Méthode requise', 'Choisis une méthode de paiement.'); return;
     }
-    if (step === 1) { setStep(2); return; }
+    if (step === 1) { setStep(2); return; 
 
-    // Étape 2 → exécuter
-    setLoading(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    try {
-      const fnName = isDeposit ? 'deposit_funds' : 'withdraw_funds';
-      const { data, error } = await supabase.rpc(fnName, {
-        p_user_id: userId,
-        p_amount:  parsedAmount,
-        p_label:   `${isDeposit ? 'Recharge' : 'Retrait'} ${METHODS.find(m => m.key === method)?.label}`,
-      });
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Échec de la transaction.');
-
-      // Mettre à jour AsyncStorage
-      const stored = await AsyncStorage.getItem('skillz_user');
-      if (stored) {
-        const user = JSON.parse(stored);
-        user.balance = data.balance_new;
-        await AsyncStorage.setItem('skillz_user', JSON.stringify(user));
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setStep(3);
-      setTimeout(() => {
-        onSuccess(data.balance_new);
-        onClose();
-      }, 2000);
-
-    } catch (e) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Erreur', e.message || 'Transaction échouée.');
-    } finally {
-      setLoading(false);
     }
+
+    if (step === 2) {
+  setLoading(true);
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  try {
+    const u = await getCurrentUser();
+    if (!u?.id) {
+      Alert.alert('Non connecté', 'Reconnecte-toi.'); return;
+    }
+
+    // ✅ Récupérer le numéro de téléphone du profil
+    const phone  = u.phone || '';
+    if (!phone) {
+      Alert.alert('Numéro requis', 'Ajoute ton numéro dans ton profil.');
+      setLoading(false);
+      return;
+    }
+
+    let result;
+    if (isDeposit) {
+      result = await initiateDeposit({ amount: parsedAmount, method: method as 'orange' | 'mtn' });
+    } else {
+      result = await initiateWithdrawal({ amount: parsedAmount, method: method as 'orange' | 'mtn' });
+    }
+
+    if (!result.success || !result.sessionUrl) {
+      Alert.alert('Erreur', result.error || 'Session FAROTY impossible.'); return;
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setStep(3);
+
+    // Pour un retrait, le solde est mis à jour immédiatement
+    if (!isDeposit && result.newBalance !== undefined) {
+      onSuccess(result.newBalance);
+    }
+
+    // Pour un dépôt, le solde sera mis à jour par le webhook
+    setTimeout(() => onClose(), 2500);
+
+  } catch (e: any) {
+    Alert.alert('Erreur', e.message);
+  } finally {
+    setLoading(false);
+  }
+}
   };
 
   return (
@@ -331,26 +350,84 @@ export default function WalletScreen() {
   const loadWalletData = async () => {
     setLoading(true);
     try {
-      const stored = await AsyncStorage.getItem('skillz_user');
-      if (!stored) return;
-      const u = JSON.parse(stored);
-      setUser(u);
-
-      const [walletRes, txRes] = await Promise.all([
-        supabase.from('wallets').select('*').eq('user_id', u.id).single(),
-        supabase.from('transactions').select('*').eq('user_id', u.id)
-          .order('created_at', { ascending: false }).limit(50),
-      ]);
-
-      if (walletRes.data) setWallet(walletRes.data);
-      if (txRes.data)     setTransactions(txRes.data);
-
-    } catch (e) {
-      console.error('loadWalletData:', e);
-    } finally {
+      // ✅ Utilise getCurrentUser qui garantit un vrai UUID Supabase
+    const u = await getCurrentUser();
+    if (!u) {
+      console.warn('Non connecté', 'Reconnecte-toi.');
       setLoading(false);
+      return;
     }
-  };
+
+    // Vérifier que l'ID est valide
+    if (!isValidUUID(u.id)) {
+      cAlert.alert(
+        'Session expirée',
+        'Ta session a expiré. Reconnecte-toi.',
+        [{ text: 'OK', onPress: () => {
+          supabase.auth.signOut();
+          AsyncStorage.removeItem('skillz_user');
+        }}]
+      );
+      setLoading(false);
+      return;
+    }
+
+    // Récupérer le numéro de téléphone
+    let phoneNumber = currentUser.phone || '';
+    if (!phoneNumber) {
+      // Si pas de téléphone dans le profil, demander
+      Alert.alert(
+        'Numéro manquant',
+        'Ajoute ton numéro de téléphone dans ton profil pour effectuer des transactions.'
+      );
+      setLoading(false);
+      return;
+    }
+    // S'assurer que le numéro commence par 237 (Cameroun)
+    if (!phoneNumber.startsWith('237')) {
+      phoneNumber = `237${phoneNumber.replace(/^0/, '')}`;
+    }
+
+console.log('Transaction:', {
+      userId:   currentUser.id,
+      amount:   parsedAmount,
+      phone:    phoneNumber,
+      provider: method,
+      type:     isDeposit ? 'deposit' : 'withdrawal',
+    });
+
+    let result;
+    if (isDeposit) {
+      result = await depositMoney(currentUser.id, parsedAmount, phoneNumber, method as 'orange' | 'mtn');
+    } else {
+      result = await withdrawMoney(currentUser.id, parsedAmount, phoneNumber, method as 'orange' | 'mtn');
+    }
+
+    if (!result.success) {
+      Alert.alert('Erreur', result.error || 'Transaction échouée.');
+      setLoading(false);
+      return;
+    }
+
+     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setStep(3);
+
+    if (!isDeposit && result.newBalance !== undefined) {
+      onSuccess(result.newBalance);
+    } else if (isDeposit && result.newBalance !== undefined) {
+      onSuccess(result.newBalance);
+    }
+
+    setTimeout(() => onClose(), 2500);
+
+    setUser(u);
+    // ... reste du chargement
+  } catch (e: any) {
+    Alert.alert('Erreur', e.message || 'Transaction impossible.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   /* ── Realtime solde ── */
   const setupRealtime = () => {

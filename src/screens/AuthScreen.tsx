@@ -58,6 +58,7 @@ function OTPInput({ value, onChange, hasError }) {
   );
 }
 
+
 // ══════════════════════════════════════
 // AUTH SCREEN — TÉLÉPHONE + OTP UNIQUEMENT
 // ══════════════════════════════════════
@@ -156,42 +157,79 @@ export default function AuthScreen({ onLogin }) {
   // ══════════════════════════════════════
   // ÉTAPE 2 — Vérifier OTP et connecter
   // ══════════════════════════════════════
-  const handleVerifyOTP = async () => {
-    if (otpCode.length < 6) {
-      setOtpError(true);
-      shake();
-      setError('Entre le code à 6 chiffres.');
-      return;
-    }
-    if (otpCode !== otpExpected) {
-      setOtpError(true);
-      shake();
-      setError('Code incorrect. Réessaie.');
-      return;
-    }
+  async function handleVerify() {
+  if (!code) return;
+  setLoading(true);
 
-    setLoading(true);
-    setError('');
+  const storedOTP = await AsyncStorage.getItem('skillz_temp_otp');
+  const formatted = phone.startsWith('+') ? phone : `+237${phone.replace(/^0+/, '')}`;
 
-    const cleanPhone = phone.replace(/[\s\-\+]/g, '');
-    const formattedPhone = `+${cleanPhone}`;
-
-    // Créer l'utilisateur localement (pas d'auth Supabase pour le MVP)
-    const user = {
-      id: Date.now().toString(),
-      phone: formattedPhone,
-      username: `Joueur_${cleanPhone.slice(-4)}`,
-      rank: 'RANG BRONZE',
-      balance: 5000,
-      createdAt: new Date().toISOString(),
-    };
-
-    await AsyncStorage.setItem('skillz_user', JSON.stringify(user));
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onLogin(user);
+  if (code !== storedOTP) {
+    Alert.alert('Erreur', 'Code incorrect.');
     setLoading(false);
-  };
+    return;
+  }
 
+  try {
+    // Vérifier si le joueur existe déjà dans la table players
+    const { data: existingPlayer, error: selectError } = await supabase
+      .from('players')
+      .select('id, name')
+      .eq('phone', formatted)
+      .single();
+
+    let player;
+
+    if (existingPlayer) {
+      // Joueur existant → mettre à jour last_login_at
+      player = existingPlayer;
+      await supabase
+        .from('players')
+        .update({ last_login_at: new Date().toISOString() })
+        .eq('id', player.id);
+    } else {
+      // Nouveau joueur → inscription
+      const { data: newPlayer, error: insertError } = await supabase
+        .from('players')
+        .insert({
+          phone: formatted,
+          name: name.trim(),
+          last_login_at: new Date().toISOString(),
+        })
+        .select('id, name')
+        .single();
+
+      if (insertError) {
+        Alert.alert('Erreur', "Impossible de créer le compte.");
+        setLoading(false);
+        return;
+      }
+      player = newPlayer;
+
+      // Créer un wallet initial avec 5000 FCFA
+      await supabase.from('wallets').insert({
+        user_id: player.id,
+        balance: 5000,
+      });
+    }
+
+    // ✅ C'EST ICI que tu mets le bloc
+    const user = {
+      id: player.id,
+      phone: formatted,
+      user_metadata: { name: player.name },
+    };
+    await AsyncStorage.setItem('skillz_user', JSON.stringify(user));
+    await AsyncStorage.removeItem('skillz_temp_otp');
+    onLogin(user);
+
+  } catch (e) {
+    console.error(e);
+    Alert.alert('Erreur', 'Une erreur est survenue.');
+  } finally {
+    setLoading(false);
+  }
+}
   return (
     <KeyboardAvoidingView
       style={styles.screen}

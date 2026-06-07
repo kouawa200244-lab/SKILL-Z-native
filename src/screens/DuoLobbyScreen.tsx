@@ -21,6 +21,7 @@ import { getDuelCondition } from '../constants/duelTypes';
 import { supabase } from '../supabaseClient';
 import { navigate } from '../utils/navigationRef'; // ✅ FIX
 import { useFocusEffect } from '@react-navigation/native';
+import { fetchOpenDuels, joinDuel } from '../services/betService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: W, height: H } = Dimensions.get('window');
