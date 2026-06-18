@@ -1,213 +1,183 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, ActivityIndicator, StyleSheet, Animated } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useFonts } from 'expo-font';
-import { Rajdhani_700Bold } from '@expo-google-fonts/rajdhani';
-import { Inter_400Regular } from '@expo-google-fonts/inter';
-import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
-import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from './src/supabaseClient';
-import { getCurrentUser } from './src/utils/getCurrentUser';
-import { navigationRef } from './src/utils/navigationRef';
-import { LINKING_CONFIG } from './src/utils/deepLinking';
-import AppNavigator from './src/navigation/AppNavigator';
-import AuthScreen from './src/screens/AuthScreen';
-import { T } from './src/utils/designTokens';
-
-SplashScreen.preventAutoHideAsync();
-
+import { useFonts } from 'expo-font';
+import { Rajdhani_700Bold }        from '@expo-google-fonts/rajdhani';
+import { Inter_400Regular }        from '@expo-google-fonts/inter';
+import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
+import { StatusBar } from 'expo-status-bar';
+import { supabase }     from './src/supabaseClient';
+import AppNavigator     from './src/navigation/AppNavigator';
+import AuthScreen       from './src/screens/AuthScreen';
+import { T }            from './src/utils/designTokens';
+ 
 export default function App() {
-  const [user,       setUser]       = useState(null);
-  const [ready,      setReady]      = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user,         setUser]         = useState(null);
+  const [initializing, setInitializing] = useState(true);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  /* ── Fonts (Google Fonts via expo-font) ── */
+  /* ── Fonts ── */
   const [fontsLoaded] = useFonts({
     'Rajdhani-Bold':         Rajdhani_700Bold,
     'Inter-Regular':         Inter_400Regular,
     'JetBrainsMono-Regular': JetBrainsMono_400Regular,
   });
 
-  /* ── Synchroniser AsyncStorage avec la session Supabase ── */
-  const syncUserStorage = async (session) => {
-    try {
-      const stored = await AsyncStorage.getItem('skillz_user');
-      let u = stored ? JSON.parse(stored) : {};
-
-      if (!u.username || u.balance == null) {
-        // Données manquantes → tout récupérer depuis Supabase
-        const [profileRes, walletRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', session.user.id).single(),
-          supabase.from('wallets').select('balance').eq('user_id', session.user.id).single(),
-        ]);
-        if (profileRes.data) {
-          u = {
-            ...u,
-            id:       session.user.id,
-            email:    session.user.email,
-            username: profileRes.data.username,
-            rank:     profileRes.data.rank,
-            xp:       profileRes.data.xp,
-            phone:    profileRes.data.phone || u.phone || '',
-            balance:  walletRes.data?.balance || 0,
-            token:    session.access_token,
-          };
-          await AsyncStorage.setItem('skillz_user', JSON.stringify(u));
-        }
-      } else {
-        // Juste rafraîchir le token et l'id
-        u.token = session.access_token;
-        u.id    = session.user.id;
-        await AsyncStorage.setItem('skillz_user', JSON.stringify(u));
-      }
-    } catch (e) {
-      console.warn('syncUserStorage error:', e.message);
-    }
-  };
-
-  /* ── Initialisation auth (après fonts) ── */
+  /* ── Vérification session au démarrage ── */
   useEffect(() => {
-    if (!fontsLoaded) return;
-    initAuth();
-  }, [fontsLoaded]);
+    checkExistingSession();
 
-  const initAuth = async () => {
-    try {
-      // 1. Session Supabase active ?
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (session?.user) {
-        await syncUserStorage(session);
-        const fullUser = await getCurrentUser();
-        if (fullUser) {
-          setUser(fullUser);
-          setIsLoggedIn(true);
-          setReady(true);
-          await SplashScreen.hideAsync();
-          return;
-        }
-      }
-
-      // 2. Token stocké → essayer de rafraîchir
-      const stored = await AsyncStorage.getItem('skillz_user');
-      if (stored) {
-        const u = JSON.parse(stored);
-        if (u?.token) {
-          const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-          if (!refreshError && refreshed?.session) {
-            await syncUserStorage(refreshed.session);
-            const fullUser = await getCurrentUser();
-            if (fullUser) {
-              setUser(fullUser);
-              setIsLoggedIn(true);
-              setReady(true);
-              await SplashScreen.hideAsync();
-              return;
-            }
-          }
-        }
-        // Token invalide/expiré
-        await AsyncStorage.multiRemove(['skillz_user', 'skillz_queue', 'skillz_temp_otp']);
-      }
-
-      setIsLoggedIn(false);
-    } catch (e) {
-      console.error('initAuth error:', e.message);
-      setIsLoggedIn(false);
-    } finally {
-      setReady(true);
-      await SplashScreen.hideAsync();
-    }
-  };
-
-  /* ── Écouter les changements auth Supabase ── */
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state change:', event);
-
-        if (event === 'SIGNED_IN' && session?.user) {
-          await syncUserStorage(session);
-          const fullUser = await getCurrentUser();
-          if (fullUser) {
-            setUser(fullUser);
-            setIsLoggedIn(true);
-          }
-
-        } else if (event === 'TOKEN_REFRESHED' && session) {
-          const stored = await AsyncStorage.getItem('skillz_user');
-          if (stored) {
-            const u = JSON.parse(stored);
-            u.token = session.access_token;
-            await AsyncStorage.setItem('skillz_user', JSON.stringify(u));
-          }
-
-        } else if (event === 'SIGNED_OUT') {
-          await AsyncStorage.multiRemove(['skillz_user', 'skillz_queue', 'skillz_temp_otp']);
+        console.log('[App] Auth event:', event);
+        if (event === 'SIGNED_OUT') {
           setUser(null);
-          setIsLoggedIn(false);
         }
       }
     );
 
-    return () => subscription?.unsubscribe();
+    return () => authListener?.subscription?.unsubscribe();
   }, []);
 
-  /* ── Callbacks login / logout ── */
-  const handleLogin = async (userData: any) => {
-    const userToStore = {
-    id: userData.id,
-    phone: userData.phone || userData.user_metadata?.phone,
-    username: userData.user_metadata?.name || userData.username || 'Joueur',
-    token: userData.token || userData.access_token || null,
+  const checkExistingSession = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('skillz_user');
+      if (stored) {
+        const localUser = JSON.parse(stored);
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session) {
+          const freshUser = await refreshUserData(localUser.id || session.user.id);
+          const finalUser = freshUser || localUser;
+          setUser(finalUser);
+          await AsyncStorage.setItem('skillz_user', JSON.stringify(finalUser));
+        } else {
+          const refreshed = await tryRefreshSession(localUser);
+          if (refreshed) {
+            setUser(refreshed);
+          } else {
+            await AsyncStorage.removeItem('skillz_user');
+            setUser(null);
+          }
+        }
+      } else {
+        setUser(null);
+      }
+    } catch (e) {
+      console.error('[App] checkExistingSession error:', e);
+      setUser(null);
+    } finally {
+      setInitializing(false);
+      Animated.timing(fadeAnim, {
+        toValue: 1, duration: 400, useNativeDriver: true,
+      }).start();
+    }
   };
-    await AsyncStorage.setItem('skillz_user', JSON.stringify(userToStore));
-    setUser(userToStore);
-    setIsLoggedIn(true);
+
+  const refreshUserData = async (userId) => {
+    try {
+      const [profileRes, walletRes] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).single(),
+        supabase.from('wallets').select('*').eq('user_id', userId).single(),
+      ]);
+      if (!profileRes.data) return null;
+      return {
+        id:             userId,
+        username:       profileRes.data.username,
+        phone:          profileRes.data.phone,
+        rank:           profileRes.data.rank           || 'RANG BRONZE',
+        xp:             profileRes.data.xp             || 0,
+        balance:        walletRes.data?.balance        || 0,
+        farotyWalletId: profileRes.data.faroty_wallet_id,
+        farotyUserId:   profileRes.data.faroty_user_id,
+        avatarUrl:      profileRes.data.avatar_url,
+      };
+    } catch (e) {
+      console.error('[App] refreshUserData:', e);
+      return null;
+    }
   };
+
+  const tryRefreshSession = async (localUser) => {
+    try {
+      const stored = await AsyncStorage.getItem('skillz_user');
+      const u      = JSON.parse(stored || '{}');
+      if (u.refreshToken) {
+        const { data, error } = await supabase.auth.refreshSession({
+          refresh_token: u.refreshToken,
+        });
+        if (!error && data.session) {
+          const fresh = await refreshUserData(data.session.user.id);
+          if (fresh) {
+            const updated = {
+              ...fresh,
+              token:        data.session.access_token,
+              refreshToken: data.session.refresh_token,
+            };
+            await AsyncStorage.setItem('skillz_user', JSON.stringify(updated));
+            return updated;
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const handleLogin  = async (userData) => setUser(userData);
 
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-    } catch (_) {}
-    await AsyncStorage.multiRemove(['skillz_user', 'skillz_queue', 'skillz_temp_otp']);
-    setUser(null);
-    setIsLoggedIn(false);
+      await AsyncStorage.multiRemove([
+        'skillz_user',
+        'skillz_queue',
+        'skillz_otp_sim',
+        'skillz_auth_tmp',
+      ]);
+      setUser(null);
+    } catch (e) {
+      console.error('[App] logout error:', e);
+      setUser(null);
+    }
   };
 
-  /* ── Loader (fonts + init auth) ── */
-  if (!ready || !fontsLoaded) {
+  /* ── Splash pendant chargement ── */
+  if (!fontsLoaded || initializing) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator color={T.gold} size="large" />
-      </View>
+      <SafeAreaProvider>
+        <View style={styles.splashScreen}>
+          <ActivityIndicator color={T.gold} size="large" />
+        </View>
+      </SafeAreaProvider>
     );
   }
-
+  
   return (
     <SafeAreaProvider>
-      <NavigationContainer
-        ref={navigationRef}
-        linking={LINKING_CONFIG}
-      >
-        {isLoggedIn && user ? (
-          <AppNavigator onLogout={handleLogout} />
+      <Animated.View style={[styles.root, { opacity: fadeAnim }]}>
+        <StatusBar style="light" />
+        {user ? (
+          <NavigationContainer>
+            <AppNavigator
+              user={user}
+              onLogout={handleLogout}
+              onUserUpdate={setUser}
+            />
+          </NavigationContainer>
         ) : (
           <AuthScreen onLogin={handleLogin} />
         )}
-      </NavigationContainer>
+      </Animated.View>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  loading: {
-    flex: 1,
-    backgroundColor: '#080A0F',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  root:        { flex: 1, backgroundColor: '#080A0F' },
+  splashScreen:{ flex: 1, backgroundColor: '#080A0F', justifyContent: 'center', alignItems: 'center' },
 });

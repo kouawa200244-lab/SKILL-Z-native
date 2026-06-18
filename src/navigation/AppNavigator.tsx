@@ -16,6 +16,7 @@ import HistoryScreen    from '../screens/HistoryScreen';
 import DefiChallengeScreen from '../screens/DefiChallengeScreen';
 import ViralShareScreen    from '../screens/ViralShareScreen';
 import ViralResultScreen   from '../screens/ViralResultScreen';
+import PaymentWebViewScreen from '../screens/PaymentWebViewScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -65,6 +66,15 @@ export default function AppNavigator({ onLogout }) {
           animation: 'fade',
           animationDuration: 400,
         }}
+      />
+      <Stack.Screen
+        name="PaymentWebView"
+        component={PaymentWebViewScreen}
+        options={{ 
+          headerShown:    false,
+    animation:      'slide_from_bottom',
+    gestureEnabled: false, // pas de swipe pour les paiements
+  }}
       />
     </Stack.Navigator>
   );

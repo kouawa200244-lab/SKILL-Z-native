@@ -4,29 +4,79 @@ import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, Animated, Dimensions, StatusBar,
   KeyboardAvoidingView, Platform, ScrollView,
-  ActivityIndicator, Alert,
+  ActivityIndicator,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Phone, Zap, Shield, ArrowRight, RefreshCw, CheckCircle } from 'lucide-react-native';
-import { T } from '../utils/designTokens';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  Phone, User, ArrowRight, Zap,
+  Shield, RefreshCw,
+} from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { T }            from '../utils/designTokens';
+import { supabase }     from '../supabaseClient';
+import { farotyAuth }   from '../utils/paymentService';
+import AsyncStorage     from '@react-native-async-storage/async-storage';
 
-const { height: H, width: W } = Dimensions.get('window');
+/* ✅ H déclaré ici — c'était l'erreur */
+const { width: W, height: H } = Dimensions.get('window');
 
-// ══════════════════════════════════════
-// OTP INPUT — 6 cases
-// ══════════════════════════════════════
+/* ══════════════════════════════════════
+   INPUT FIELD
+══════════════════════════════════════ */
+function InputField({ icon: Icon, placeholder, value, onChangeText, keyboardType, maxLength, prefix }) {
+  const focusAnim = useRef(new Animated.Value(0)).current;
+
+  const onFocus = () => Animated.spring(focusAnim, {
+    toValue: 1, tension: 120, friction: 8, useNativeDriver: false,
+  }).start();
+
+  const onBlur = () => Animated.spring(focusAnim, {
+    toValue: 0, tension: 120, friction: 8, useNativeDriver: false,
+  }).start();
+
+  const borderColor = focusAnim.interpolate({
+    inputRange:  [0, 1],
+    outputRange: ['rgba(255,255,255,0.07)', T.gaming],
+  });
+  const bgColor = focusAnim.interpolate({
+    inputRange:  [0, 1],
+    outputRange: ['#0D0F14', '#0D1A20'],
+  });
+
+  return (
+    <Animated.View style={[styles.inputWrap, { borderColor, backgroundColor: bgColor }]}>
+      <View style={styles.inputIconBox}>
+        <Icon size={16} color={T.muted} />
+      </View>
+      {prefix && <Text style={styles.inputPrefix}>{prefix}</Text>}
+      <TextInput
+        style={styles.input}
+        placeholder={placeholder}
+        placeholderTextColor={T.muted}
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType || 'default'}
+        autoCapitalize="none"
+        maxLength={maxLength}
+        onFocus={onFocus}
+        onBlur={onBlur}
+      />
+    </Animated.View>
+  );
+}
+
+/* ══════════════════════════════════════
+   OTP 6 CASES
+══════════════════════════════════════ */
 function OTPInput({ value, onChange, hasError }) {
   const inputs = useRef([]);
 
   const handleChange = (text, index) => {
-    const digits = value.split('');
+    const digits  = value.split('');
     digits[index] = text.replace(/\D/g, '').slice(-1);
-    const newVal = digits.join('');
+    const newVal  = digits.join('');
     onChange(newVal);
-    if (text && index < 5) {
-      inputs.current[index + 1]?.focus();
-    }
+    if (text && index < 5) inputs.current[index + 1]?.focus();
   };
 
   const handleKeyPress = (e, index) => {
@@ -43,11 +93,11 @@ function OTPInput({ value, onChange, hasError }) {
           ref={ref => inputs.current[i] = ref}
           style={[
             styles.otpBox,
-            value[i] && styles.otpBoxFilled,
-            hasError && styles.otpBoxError,
+            value[i]  && styles.otpBoxFilled,
+            hasError  && styles.otpBoxError,
           ]}
           value={value[i] || ''}
-          onChangeText={text => handleChange(text, i)}
+          onChangeText={t => handleChange(t, i)}
           onKeyPress={e => handleKeyPress(e, i)}
           keyboardType="numeric"
           maxLength={1}
@@ -58,21 +108,23 @@ function OTPInput({ value, onChange, hasError }) {
   );
 }
 
-
-// ══════════════════════════════════════
-// AUTH SCREEN — TÉLÉPHONE + OTP UNIQUEMENT
-// ══════════════════════════════════════
+/* ══════════════════════════════════════
+   AUTH SCREEN
+══════════════════════════════════════ */
 export default function AuthScreen({ onLogin }) {
-  const [step,    setStep]    = useState(1);  // 1 = téléphone, 2 = OTP
-  const [phone,   setPhone]   = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [otpExpected, setOtpExpected] = useState('');
-  const [otpError, setOtpError] = useState(false);
-  const [countdown, setCountdown] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
+  const insets = useSafeAreaInsets();
 
-  // Animations
+  const [step,      setStep]      = useState(1);
+  const [phone,     setPhone]     = useState('');
+  const [username,  setUsername]  = useState('');
+  const [otpCode,   setOtpCode]   = useState('');
+  const [otpSim,    setOtpSim]    = useState('');
+  const [otpError,  setOtpError]  = useState(false);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState('');
+  const [countdown, setCountdown] = useState(0);
+  const [isNewUser, setIsNewUser] = useState(false);
+
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(60)).current;
   const logoScale = useRef(new Animated.Value(0.7)).current;
@@ -88,25 +140,24 @@ export default function AuthScreen({ onLogin }) {
     ]).start();
 
     Animated.loop(Animated.sequence([
-      Animated.timing(orb1Anim, { toValue: 1, duration: 4000, useNativeDriver: true }),
-      Animated.timing(orb1Anim, { toValue: 0, duration: 4000, useNativeDriver: true }),
-    ])).start();
-
-    Animated.loop(Animated.sequence([
       Animated.timing(glowAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
       Animated.timing(glowAnim, { toValue: 0, duration: 2000, useNativeDriver: true }),
     ])).start();
+
+    Animated.loop(Animated.sequence([
+      Animated.timing(orb1Anim, { toValue: 1, duration: 4000, useNativeDriver: true }),
+      Animated.timing(orb1Anim, { toValue: 0, duration: 4000, useNativeDriver: true }),
+    ])).start();
   }, []);
 
-  // Countdown renvoi OTP
   useEffect(() => {
     if (countdown <= 0) return;
     const t = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [countdown]);
 
-  const orb1Y      = orb1Anim.interpolate({ inputRange: [0, 1], outputRange: [0, -20] });
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.7] });
+  const orb1Y       = orb1Anim.interpolate({ inputRange: [0, 1], outputRange: [0, -20] });
 
   const shake = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -119,117 +170,150 @@ export default function AuthScreen({ onLogin }) {
     ]).start();
   };
 
-  // ══════════════════════════════════════
-  // ÉTAPE 1 — Envoyer OTP
-  // ══════════════════════════════════════
-  const handleSendOTP = async () => {
-    const cleanPhone = phone.replace(/[\s\-\+]/g, '');
-    if (cleanPhone.length < 9) {
-      setError('Entre un numéro valide (ex: 237674742929)');
+  /* ── ÉTAPE 1 ── */
+  const handleStep1 = async () => {
+    setError('');
+
+    if (!username.trim() || username.trim().length < 2) {
+      setError('Entre un nom d\'utilisateur (2 caractères min.)');
+      shake(); return;
+    }
+    if (!phone.trim() || phone.replace(/\D/g, '').length < 8) {
+      setError('Entre un numéro valide (ex: 677438521)');
+      shake(); return;
+    }
+
+    setLoading(true);
+    try {
+      const phoneFormatted = formatPhone(phone);
+      const res = await farotyAuth({ phone: phoneFormatted, username: username.trim() });
+
+      if (!res.success) throw new Error(res.error || 'Erreur de connexion.');
+
+      await AsyncStorage.setItem('skillz_auth_tmp', JSON.stringify({
+        ...res,
+        phoneFormatted,
+      }));
+
+      setIsNewUser(res.isNew);
+
+      const simCode = generateSimOTP();
+      setOtpSim(simCode);
+
+      await AsyncStorage.setItem('skillz_otp_sim', JSON.stringify({
+        code:      simCode,
+        phone:     phoneFormatted,
+        expiresAt: Date.now() + 10 * 60 * 1000,
+      }));
+
+      setCountdown(60);
+      setStep(2);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    } catch (e) {
+      setError(e.message || 'Erreur. Réessaie.');
       shake();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ── ÉTAPE 2 ── */
+  const handleVerifyOTP = async () => {
+    setError('');
+
+    if (otpCode.length < 6) {
+      setOtpError(true); shake();
+      setError('Entre le code à 6 chiffres.');
       return;
     }
 
     setLoading(true);
-    setError('');
+    try {
+      const storedOtp = await AsyncStorage.getItem('skillz_otp_sim');
+      if (!storedOtp) throw new Error('Code expiré. Recommence.');
 
-    // MODE DEV : OTP fixe 123456
-    const code = '123456';
-    setOtpExpected(code);
+      const { code, expiresAt } = JSON.parse(storedOtp);
 
-    // Simuler l'envoi SMS (1 seconde)
-    setTimeout(() => {
-      setStep(2);
-      setLoading(false);
-      setCountdown(60);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 1000);
-  };
-
-  const handleResendOTP = () => {
-    if (countdown > 0) return;
-    setOtpCode('');
-    setOtpError(false);
-    setError('');
-    handleSendOTP();
-  };
-
-  // ══════════════════════════════════════
-  // ÉTAPE 2 — Vérifier OTP et connecter
-  // ══════════════════════════════════════
-  async function handleVerify() {
-  if (!code) return;
-  setLoading(true);
-
-  const storedOTP = await AsyncStorage.getItem('skillz_temp_otp');
-  const formatted = phone.startsWith('+') ? phone : `+237${phone.replace(/^0+/, '')}`;
-
-  if (code !== storedOTP) {
-    Alert.alert('Erreur', 'Code incorrect.');
-    setLoading(false);
-    return;
-  }
-
-  try {
-    // Vérifier si le joueur existe déjà dans la table players
-    const { data: existingPlayer, error: selectError } = await supabase
-      .from('players')
-      .select('id, name')
-      .eq('phone', formatted)
-      .single();
-
-    let player;
-
-    if (existingPlayer) {
-      // Joueur existant → mettre à jour last_login_at
-      player = existingPlayer;
-      await supabase
-        .from('players')
-        .update({ last_login_at: new Date().toISOString() })
-        .eq('id', player.id);
-    } else {
-      // Nouveau joueur → inscription
-      const { data: newPlayer, error: insertError } = await supabase
-        .from('players')
-        .insert({
-          phone: formatted,
-          name: name.trim(),
-          last_login_at: new Date().toISOString(),
-        })
-        .select('id, name')
-        .single();
-
-      if (insertError) {
-        Alert.alert('Erreur', "Impossible de créer le compte.");
+      if (Date.now() > expiresAt) {
+        throw new Error('Code expiré. Clique sur "Renvoyer".');
+      }
+      if (otpCode !== code) {
+        setOtpError(true); shake();
+        setError('Code incorrect.');
         setLoading(false);
         return;
       }
-      player = newPlayer;
 
-      // Créer un wallet initial avec 5000 FCFA
-      await supabase.from('wallets').insert({
-        user_id: player.id,
-        balance: 5000,
-      });
+      const tmpData = await AsyncStorage.getItem('skillz_auth_tmp');
+      if (!tmpData) throw new Error('Session expirée. Recommence.');
+
+      const authData = JSON.parse(tmpData);
+
+      const userSession = {
+        id:             authData.userId      || authData.profile?.id,
+        username:       authData.username    || authData.profile?.username,
+        phone:          authData.phoneFormatted,
+        rank:           authData.profile?.rank    || 'RANG BRONZE',
+        xp:             authData.profile?.xp      || 0,
+        balance:        authData.wallet?.balance  || authData.balance || 1000,
+        farotyWalletId: authData.farotyWalletId  || authData.profile?.faroty_wallet_id,
+        farotyUserId:   authData.farotyUserId,
+        token:          authData.token,
+        refreshToken:   authData.refreshToken,
+        isNew:          authData.isNew,
+      };
+
+      await AsyncStorage.setItem('skillz_user', JSON.stringify(userSession));
+      await AsyncStorage.removeItem('skillz_auth_tmp');
+      await AsyncStorage.removeItem('skillz_otp_sim');
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onLogin(userSession);
+
+    } catch (e) {
+      setOtpError(true);
+      setError(e.message || 'Erreur de vérification.');
+      shake();
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // ✅ C'EST ICI que tu mets le bloc
-    const user = {
-      id: player.id,
-      phone: formatted,
-      user_metadata: { name: player.name },
-    };
-    await AsyncStorage.setItem('skillz_user', JSON.stringify(user));
-    await AsyncStorage.removeItem('skillz_temp_otp');
-    onLogin(user);
+  const handleResend = async () => {
+    if (countdown > 0) return;
+    const simCode = generateSimOTP();
+    setOtpSim(simCode);
+    setOtpCode('');
+    setOtpError(false);
+    setError('');
+    await AsyncStorage.setItem('skillz_otp_sim', JSON.stringify({
+      code:      simCode,
+      phone:     formatPhone(phone),
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    }));
+    setCountdown(60);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
 
-  } catch (e) {
-    console.error(e);
-    Alert.alert('Erreur', 'Une erreur est survenue.');
-  } finally {
-    setLoading(false);
-  }
-}
+  const handleSubmit = () => step === 1 ? handleStep1() : handleVerifyOTP();
+
+  const StepDots = () => (
+    <View style={styles.stepDots}>
+      {[1, 2].map(s => (
+        <View
+          key={`dot_${s}`}
+          style={[
+            styles.stepDot,
+            step >= s
+              ? { backgroundColor: T.gaming, width: 24 }
+              : { backgroundColor: 'rgba(255,255,255,0.15)', width: 8 },
+          ]}
+        />
+      ))}
+    </View>
+  );
+
   return (
     <KeyboardAvoidingView
       style={styles.screen}
@@ -237,22 +321,28 @@ export default function AuthScreen({ onLogin }) {
     >
       <StatusBar barStyle="light-content" />
 
-      {/* Orbes décoratives */}
+      {/* Orbes déco */}
       <Animated.View style={[styles.orb1, { transform: [{ translateY: orb1Y }] }]} />
       <View style={styles.orb2} />
       <View style={styles.orb3} />
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {/* ── LOGO ── */}
-        <Animated.View style={[styles.logoSection, { opacity: fadeAnim, transform: [{ scale: logoScale }] }]}>
+        <Animated.View style={[
+          styles.logoSection,
+          { opacity: fadeAnim, transform: [{ scale: logoScale }] },
+        ]}>
           <View style={styles.logoWrap}>
             <Animated.View style={[styles.logoGlow, { opacity: glowOpacity }]} />
             <View style={styles.logoBadge}>
-              <Zap size={32} color={T.gold} strokeWidth={2.5} />
+              <Zap size={36} color={T.gold} strokeWidth={2.5} />
             </View>
           </View>
           <Text style={styles.logoTitle}>SKILL'Z</Text>
@@ -262,251 +352,258 @@ export default function AuthScreen({ onLogin }) {
         {/* ── CARD ── */}
         <Animated.View style={[
           styles.card,
-          {
-            opacity:   fadeAnim,
-            transform: [{ translateY: slideAnim }, { translateX: shakeAnim }],
-          },
+          { opacity: fadeAnim, transform: [{ translateY: slideAnim }, { translateX: shakeAnim }] },
         ]}>
-          <View style={styles.cardAccent} />
+          <View style={[styles.cardAccent, { backgroundColor: T.gaming }]} />
 
-          {/* ── ÉTAPE 1 : TÉLÉPHONE ── */}
+          <View style={styles.cardTop}>
+            <StepDots />
+          </View>
+
+          {/* ════════ STEP 1 ════════ */}
           {step === 1 && (
             <>
-              <Text style={styles.formTitle}>Bienvenue sur SKILL'Z ⚡</Text>
-              <Text style={styles.formSub}>
-                Entre ton numéro de téléphone pour recevoir un code de vérification.
+              <Text style={styles.cardTitle}>Bienvenue ⚡</Text>
+              <Text style={styles.cardSub}>
+                Entre ton numéro et ton pseudo pour jouer
               </Text>
 
+              <View style={styles.bonusBadge}>
+                <Zap size={12} color={T.gold} />
+                <Text style={styles.bonusText}>1 000 FCFA offerts à l'inscription</Text>
+              </View>
+
               <View style={styles.fields}>
-                <View style={styles.phoneInputWrap}>
-                  <Phone size={18} color={T.muted} style={{ marginRight: 12 }} />
-                  <TextInput
-                    style={styles.phoneInput}
-                    placeholder="Ex: 237674742929"
-                    placeholderTextColor={T.muted}
+                <View>
+                  <Text style={styles.fieldLabel}>TON PSEUDO</Text>
+                  <InputField
+                    icon={User}
+                    placeholder="Ex: Brael, TigerCam, Flash..."
+                    value={username}
+                    onChangeText={setUsername}
+                  />
+                  <Text style={styles.fieldHint}>Ce nom sera visible par tous les joueurs</Text>
+                </View>
+
+                <View>
+                  <Text style={styles.fieldLabel}>TON NUMÉRO</Text>
+                  <InputField
+                    icon={Phone}
+                    placeholder="677 438 521"
                     value={phone}
                     onChangeText={setPhone}
                     keyboardType="phone-pad"
-                    maxLength={15}
+                    maxLength={12}
+                    prefix="+237"
                   />
+                  <Text style={styles.fieldHint}>Cameroun · Orange Money ou MTN Money</Text>
                 </View>
               </View>
-
-              {/* Bouton envoyer OTP */}
-              <TouchableOpacity
-                style={[styles.submitBtn, loading && { opacity: 0.7 }]}
-                onPress={handleSendOTP}
-                activeOpacity={0.85}
-                disabled={loading}
-              >
-                <View style={styles.submitBtnInner}>
-                  {loading ? (
-                    <ActivityIndicator color="#000" size="small" />
-                  ) : (
-                    <>
-                      <Text style={styles.submitBtnText}>RECEVOIR LE CODE</Text>
-                      <ArrowRight size={18} color="#000" />
-                    </>
-                  )}
-                </View>
-              </TouchableOpacity>
             </>
           )}
 
-          {/* ── ÉTAPE 2 : OTP ── */}
+          {/* ════════ STEP 2 ════════ */}
           {step === 2 && (
             <>
-              <Text style={styles.formTitle}>Vérifie ton numéro 📱</Text>
-              <Text style={styles.formSub}>
+              <Text style={styles.cardTitle}>
+                {isNewUser ? 'Compte créé ! 🎉' : 'Content de te revoir 👋'}
+              </Text>
+              <Text style={styles.cardSub}>
                 Code envoyé au{' '}
-                <Text style={{ color: T.gaming, fontWeight: '700' }}>
-                  +{phone.replace(/[\s\-\+]/g, '')}
-                </Text>
+                <Text style={{ color: T.gaming }}>+237 {phone}</Text>
               </Text>
 
-              {/* OTP 6 cases */}
+              {/* Code simulé — à supprimer en production */}
+              <View style={styles.simCodeCard}>
+                <View style={styles.simCodeBadge}>
+                  <Text style={styles.simCodeBadgeText}>🧪 MODE TEST</Text>
+                </View>
+                <Text style={styles.simCodeLabel}>TON CODE DE VÉRIFICATION</Text>
+                <Text style={styles.simCode}>{otpSim}</Text>
+                <Text style={styles.simCodeNote}>
+                  En production, ce code sera envoyé par SMS
+                </Text>
+              </View>
+
               <View style={styles.otpSection}>
                 <OTPInput
                   value={otpCode}
-                  onChange={(val) => {
-                    setOtpCode(val);
-                    setOtpError(false);
-                    setError('');
-                  }}
+                  onChange={(v) => { setOtpCode(v); setOtpError(false); setError(''); }}
                   hasError={otpError}
                 />
               </View>
 
-              {/* Renvoi OTP */}
               <View style={styles.resendRow}>
                 {countdown > 0 ? (
                   <Text style={styles.resendWait}>
-                    Renvoyer dans <Text style={{ color: T.gaming }}>{countdown}s</Text>
+                    Renvoyer dans{' '}
+                    <Text style={{ color: T.gaming }}>{countdown}s</Text>
                   </Text>
                 ) : (
-                  <TouchableOpacity onPress={handleResendOTP} style={styles.resendBtn}>
+                  <TouchableOpacity style={styles.resendBtn} onPress={handleResend}>
                     <RefreshCw size={13} color={T.gaming} />
                     <Text style={styles.resendText}>Renvoyer le code</Text>
                   </TouchableOpacity>
                 )}
               </View>
 
-              {/* Changer numéro */}
               <TouchableOpacity
-                style={styles.changePhoneBtn}
-                onPress={() => { setStep(1); setOtpCode(''); setError(''); }}
+                style={styles.changeBtn}
+                onPress={() => { setStep(1); setOtpCode(''); setError(''); setOtpSim(''); }}
               >
-                <Text style={styles.changePhoneText}>← Changer le numéro</Text>
-              </TouchableOpacity>
-
-              {/* Bouton vérifier */}
-              <TouchableOpacity
-                style={[styles.submitBtn, loading && { opacity: 0.7 }]}
-                onPress={handleVerifyOTP}
-                activeOpacity={0.85}
-                disabled={loading}
-              >
-                <View style={styles.submitBtnInner}>
-                  {loading ? (
-                    <ActivityIndicator color="#000" size="small" />
-                  ) : (
-                    <Text style={styles.submitBtnText}>VÉRIFIER & SE CONNECTER</Text>
-                  )}
-                </View>
+                <Text style={styles.changeBtnText}>← Changer le numéro</Text>
               </TouchableOpacity>
             </>
           )}
 
-          {/* ── ERREUR ── */}
+          {/* ── Erreur ── */}
           {error !== '' && (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>⚠️ {error}</Text>
             </View>
           )}
 
-          {/* ── SÉCURITÉ ── */}
-          <View style={styles.securityBadge}>
+          {/* ── Bouton principal ── */}
+          <TouchableOpacity
+            style={[styles.mainBtn, loading && styles.mainBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={loading}
+            activeOpacity={0.88}
+          >
+            {loading ? (
+              <ActivityIndicator color="#000" size="small" />
+            ) : (
+              <>
+                <Text style={styles.mainBtnText}>
+                  {step === 1 ? 'CONTINUER' : 'ENTRER DANS L\'ARÈNE'}
+                </Text>
+                {step === 1
+                  ? <ArrowRight size={18} color="#000" />
+                  : <Zap size={18} color="#000" fill="#000" />
+                }
+              </>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.securityRow}>
             <Shield size={11} color={T.muted} />
             <Text style={styles.securityText}>
-              Connexion sécurisée · Code OTP unique · Données chiffrées
+              Paiements sécurisés par Faroty · Données chiffrées
             </Text>
           </View>
         </Animated.View>
+
+        <Animated.View style={[styles.payInfo, { opacity: fadeAnim }]}>
+          <Text style={styles.payInfoText}>
+            💳 Orange Money · MTN Money · Faroty Wallet
+          </Text>
+        </Animated.View>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-// ══════════════════════════════════════
-// STYLES
-// ══════════════════════════════════════
+/* ── Helpers ── */
+function formatPhone(phone) {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('237')) return `+${digits}`;
+  if (digits.startsWith('6') || digits.startsWith('2')) return `+237${digits}`;
+  return `+237${digits}`;
+}
+
+function generateSimOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/* ══════════════════════════════════════
+   STYLES
+══════════════════════════════════════ */
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#080A0F' },
+  screen:        { flex: 1, backgroundColor: '#080A0F' },
+  scrollContent: { paddingHorizontal: 20, alignItems: 'center' },
 
-  /* Orbes */
-  orb1: { position: 'absolute', top: -80, right: -60, width: 260, height: 260, borderRadius: 130, backgroundColor: T.gaming,   opacity: 0.09 },
-  orb2: { position: 'absolute', top: H * 0.3, left: -80, width: 200, height: 200, borderRadius: 100, backgroundColor: T.physique, opacity: 0.08 },
-  orb3: { position: 'absolute', bottom: 60, right: -40, width: 150, height: 150, borderRadius: 75,  backgroundColor: T.gold,     opacity: 0.06 },
-
-  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingVertical: 40 },
+  /* ✅ H utilisé ici — maintenant déclaré en haut du fichier */
+  orb1: { position: 'absolute', top: -80,      right: -60, width: 260, height: 260, borderRadius: 130, backgroundColor: T.gaming,   opacity: 0.09 },
+  orb2: { position: 'absolute', top: H * 0.35, left: -80,  width: 200, height: 200, borderRadius: 100, backgroundColor: T.physique, opacity: 0.07 },
+  orb3: { position: 'absolute', bottom: 80,    right: -40, width: 160, height: 160, borderRadius: 80,  backgroundColor: T.gold,     opacity: 0.06 },
 
   /* Logo */
-  logoSection: { alignItems: 'center', marginBottom: 32 },
+  logoSection: { alignItems: 'center', marginBottom: 28, width: '100%' },
   logoWrap:    { position: 'relative', marginBottom: 14, alignItems: 'center', justifyContent: 'center' },
-  logoGlow:    { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: T.gold },
+  logoGlow:    { position: 'absolute', width: 110, height: 110, borderRadius: 55, backgroundColor: T.gold },
   logoBadge:   {
-    width: 76, height: 76, borderRadius: 22,
-    backgroundColor: '#0F1219',
-    borderWidth: 1.5, borderColor: T.gold + '50',
+    width: 84, height: 84, borderRadius: 24,
+    backgroundColor: '#0F1219', borderWidth: 2,
+    borderColor: T.gold + '50',
     justifyContent: 'center', alignItems: 'center',
     shadowColor: T.gold, shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5, shadowRadius: 20, elevation: 12,
+    shadowOpacity: 0.5, shadowRadius: 24, elevation: 14,
   },
-  logoTitle:   { fontFamily: 'Rajdhani-Bold', fontSize: 42, color: '#EEEEF5', letterSpacing: 6 },
-  logoTagline: { fontFamily: 'Inter-Regular', fontSize: 13, color: T.muted, letterSpacing: 2, marginTop: 4 },
+  logoTitle:   { fontFamily: 'Rajdhani-Bold', fontSize: 46, color: '#EEEEF5', letterSpacing: 8 },
+  logoTagline: { fontFamily: 'Inter-Regular', fontSize: 13, color: T.muted, letterSpacing: 2.5, marginTop: 6 },
 
   /* Card */
   card: {
-    backgroundColor: '#0C0E14', borderRadius: 24,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    overflow: 'hidden', paddingHorizontal: 18, paddingBottom: 20,
+    width: '100%', backgroundColor: '#0C0E14',
+    borderRadius: 24, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    overflow: 'hidden',
     shadowColor: '#000', shadowOffset: { width: 0, height: 24 },
     shadowOpacity: 0.5, shadowRadius: 40, elevation: 20,
   },
-  cardAccent: { height: 2, backgroundColor: T.gaming, marginHorizontal: -18, marginBottom: 20 },
+  cardAccent: { height: 2.5 },
+  cardTop:    { paddingHorizontal: 20, paddingTop: 18, marginBottom: 4 },
 
-  /* Formulaire */
-  formTitle: { fontFamily: 'Rajdhani-Bold', fontSize: 24, color: '#EEEEF5', letterSpacing: 0.5, marginTop: 10, marginBottom: 4 },
-  formSub:   { fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted, marginBottom: 20, lineHeight: 18 },
+  stepDots: { flexDirection: 'row', gap: 6 },
+  stepDot:  { height: 4, borderRadius: 2 },
 
-  fields: { gap: 12, marginBottom: 8 },
+  cardTitle: { fontFamily: 'Rajdhani-Bold', fontSize: 28, color: '#EEEEF5', letterSpacing: 0.5, paddingHorizontal: 20, marginTop: 12, marginBottom: 6 },
+  cardSub:   { fontFamily: 'Inter-Regular', fontSize: 13, color: T.muted, lineHeight: 20, paddingHorizontal: 20, marginBottom: 18 },
 
-  /* Phone input */
-  phoneInputWrap: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: 14, borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    backgroundColor: '#0D0F14',
-    paddingHorizontal: 16, paddingVertical: 14,
-  },
-  phoneInput: {
-    flex: 1, fontFamily: 'Inter-Regular',
-    fontSize: 16, color: '#EEEEF5', padding: 0,
-  },
+  bonusBadge: { marginHorizontal: 20, marginBottom: 20, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: T.gold + '12', borderWidth: 1, borderColor: T.gold + '30', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  bonusText:  { fontFamily: 'Inter-Regular', fontSize: 13, color: T.gold, fontWeight: '700', flex: 1 },
 
-  /* OTP */
-  otpSection: { marginBottom: 16 },
-  otpRow:     { flexDirection: 'row', gap: 8, justifyContent: 'center' },
-  otpBox:     {
-    width: (W - 76) / 6, height: 52, borderRadius: 12,
-    backgroundColor: '#0D0F14', borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.1)',
-    textAlign: 'center', fontFamily: 'JetBrainsMono-Regular',
-    fontSize: 22, color: '#EEEEF5', fontWeight: '700',
-  },
+  fields:      { paddingHorizontal: 20, gap: 18, marginBottom: 10 },
+  fieldLabel:  { fontFamily: 'Inter-Regular', fontSize: 9, color: T.muted, fontWeight: '800', letterSpacing: 2, marginBottom: 8 },
+  fieldHint:   { fontFamily: 'Inter-Regular', fontSize: 11, color: 'rgba(255,255,255,0.2)', marginTop: 6 },
+
+  inputWrap:    { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 13 },
+  inputIconBox: { marginRight: 10 },
+  inputPrefix:  { fontFamily: 'JetBrainsMono-Regular', fontSize: 14, color: T.gaming, marginRight: 6, fontWeight: '700' },
+  input:        { flex: 1, fontFamily: 'Inter-Regular', fontSize: 15, color: '#EEEEF5', padding: 0 },
+
+  otpSection:   { paddingHorizontal: 20, marginBottom: 14, marginTop: 8 },
+  otpRow:       { flexDirection: 'row', gap: 8, justifyContent: 'center' },
+  otpBox:       { width: (W - 80) / 6, height: 54, borderRadius: 12, backgroundColor: '#0D0F14', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)', textAlign: 'center', fontFamily: 'JetBrainsMono-Regular', fontSize: 22, color: '#EEEEF5', fontWeight: '700' },
   otpBoxFilled: { borderColor: T.gaming, backgroundColor: T.gaming + '10' },
   otpBoxError:  { borderColor: T.danger,  backgroundColor: T.danger  + '10' },
 
-  /* Resend */
-  resendRow:  { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  simCodeCard:      { marginHorizontal: 20, marginBottom: 20, backgroundColor: '#080A0F', borderRadius: 16, borderWidth: 1.5, borderColor: T.gaming + '40', padding: 20, alignItems: 'center', gap: 8 },
+  simCodeBadge:     { backgroundColor: T.gaming + '15', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  simCodeBadgeText: { fontFamily: 'Inter-Regular', fontSize: 9, color: T.gaming, fontWeight: '800', letterSpacing: 1.5 },
+  simCodeLabel:     { fontFamily: 'Inter-Regular', fontSize: 9, color: T.muted, fontWeight: '800', letterSpacing: 2 },
+  simCode:          { fontFamily: 'JetBrainsMono-Regular', fontSize: 44, color: T.gold, fontWeight: '700', letterSpacing: 10 },
+  simCodeNote:      { fontFamily: 'Inter-Regular', fontSize: 10, color: 'rgba(255,255,255,0.2)', textAlign: 'center' },
+
+  resendRow:  { flexDirection: 'row', justifyContent: 'center', marginBottom: 10 },
   resendWait: { fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted },
   resendBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
   resendText: { fontFamily: 'Inter-Regular', fontSize: 12, color: T.gaming, fontWeight: '700' },
 
-  changePhoneBtn:  { alignItems: 'center', marginBottom: 8 },
-  changePhoneText: { fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted },
+  changeBtn:     { alignSelf: 'center', marginBottom: 8 },
+  changeBtnText: { fontFamily: 'Inter-Regular', fontSize: 12, color: T.muted },
 
-  /* Erreur */
-  errorBox: {
-    marginTop: 12,
-    backgroundColor: T.danger + '15', borderWidth: 1,
-    borderColor: T.danger + '40', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 10,
-  },
+  errorBox:  { marginHorizontal: 20, marginTop: 4, marginBottom: 4, backgroundColor: T.danger + '15', borderWidth: 1, borderColor: T.danger + '40', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
   errorText: { fontFamily: 'Inter-Regular', fontSize: 12, color: T.danger },
 
-  /* Submit */
-  submitBtn: {
-    marginTop: 16,
-    backgroundColor: T.gold, borderRadius: 16,
-    shadowColor: T.gold, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4, shadowRadius: 20, elevation: 10,
-  },
-  submitBtnInner: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 10, paddingVertical: 16,
-  },
-  submitBtnText: {
-    fontFamily: 'Rajdhani-Bold', fontSize: 18, color: '#000', letterSpacing: 2,
-  },
+  mainBtn:         { marginHorizontal: 20, marginTop: 16, marginBottom: 6, backgroundColor: T.gold, borderRadius: 16, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, shadowColor: T.gold, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 20, elevation: 10 },
+  mainBtnDisabled: { opacity: 0.7 },
+  mainBtnText:     { fontFamily: 'Rajdhani-Bold', fontSize: 19, color: '#000', letterSpacing: 2 },
 
-  /* Security */
-  securityBadge: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 6, marginTop: 20,
-  },
-  securityText: {
-    fontFamily: 'Inter-Regular', fontSize: 10,
-    color: 'rgba(255,255,255,0.2)', letterSpacing: 0.3,
-  },
+  securityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10, marginBottom: 20 },
+  securityText:{ fontFamily: 'Inter-Regular', fontSize: 10, color: 'rgba(255,255,255,0.2)', letterSpacing: 0.3 },
+
+  payInfo:     { marginTop: 16 },
+  payInfoText: { fontFamily: 'Inter-Regular', fontSize: 11, color: 'rgba(255,255,255,0.2)', textAlign: 'center', letterSpacing: 0.5 },
 });

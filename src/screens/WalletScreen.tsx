@@ -17,9 +17,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { T } from '../utils/designTokens';
 import { fmt } from '../utils/helpers';
+import { Linking } from 'react-native';
+import { createPaymentSession } from '../utils/paymentService';
+import { useNavigation } from '@react-navigation/native';
 import PaymentWebView from '../components/PaymentWebView';
 import { initiateDeposit, initiateWithdrawal } from '../services/paymentService';
-import { getCurrentUser, isValidUUID } from '../utils/getCurrentUser';
+import { getCurrentUser} from '../utils/getCurrentUser';
 import { supabase } from '../supabaseClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -89,6 +92,33 @@ function TransactionModal({ visible, type, walletBalance, userId, onClose, onSuc
     if (step === 1) { setStep(2); return; 
 
     }
+
+    // ── Étape 2 → créer session Faroty
+  setLoading(true);
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+  try {
+    const session = await createPaymentSession({
+      amount: parsedAmount,
+      type:   isDeposit ? 'DEPOSIT' : 'WITHDRAW',
+    });
+
+    onClose(); // Fermer la modal
+
+    // Naviguer vers le WebView de paiement
+    navigation.navigate('PaymentWebView', {
+      sessionUrl:    session.sessionUrl,
+      sessionToken:  session.sessionToken,
+      transactionId: session.transactionId,
+      amount:        parsedAmount,
+      type:          isDeposit ? 'DEPOSIT' : 'WITHDRAW',
+    });
+  } catch (e) {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    Alert.alert('Erreur', e.message || 'Impossible de créer la session de paiement.');
+  } finally {
+    setLoading(false);
+  };
 
     if (step === 2) {
   setLoading(true);

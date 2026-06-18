@@ -1,185 +1,130 @@
 // @ts-nocheck
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
-const FAROTY_URL     = 'https://api-pay-prod.faroty.me/payments/api/v1';
-const FAROTY_API_KEY = Deno.env.get('FAROTY_API_KEY')!;
-const APP_URL        = 'https://skillz.app'; // ton URL ou deep link
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: {
-        'Access-Control-Allow-Origin':  '*',
-        'Access-Control-Allow-Methods': 'POST',
-        'Access-Control-Allow-Headers': 'authorization, content-type',
-      },
-    });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
 
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-  };
+  const SUPABASE_URL         = Deno.env.get("SUPABASE_URL")              || "";
+  const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const FAROTY_PAY_URL       = "https://api-pay-prod.faroty.me";
+  const FAROTY_API_KEY       = Deno.env.get("FAROTY_API_KEY")            || "";
 
   try {
-    // Récupérer le token d'authentification de l'utilisateur
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Non authentifié' }),
-        { status: 401, headers }
-      );
-    }
+    const body           = await req.json();
+    const userId         = body.userId         || "";
+    const farotyWalletId = body.farotyWalletId || "";
+    const amount         = body.amount         || 0;
+    const type           = body.type           || "DEPOSIT";
+    const username       = body.username       || "Joueur";
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    console.log("=== create-payment-session START ===");
+    console.log("userId:", userId, "| amount:", amount, "| type:", type);
+    console.log("farotyWalletId:", farotyWalletId);
+    console.log("FAROTY_API_KEY ok:", !!FAROTY_API_KEY);
 
-    // Vérifier l'utilisateur
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Token invalide' }),
-        { status: 401, headers }
-      );
-    }
+    if (!userId)         throw new Error("userId requis");
+    if (!farotyWalletId) throw new Error("farotyWalletId requis");
+    if (amount < 500)    throw new Error("Montant minimum : 500 XAF");
+    if (type !== "DEPOSIT" && type !== "WITHDRAW") throw new Error("type invalide");
 
-    const body = await req.json();
-    const { amount, type, method } = body;
-    // type: 'DEPOSIT' | 'WITHDRAWAL'
-    // method: 'orange_money' | 'mtn_money'
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Validation
-    if (!amount || amount < 500) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Montant minimum : 500 FCFA' }),
-        { status: 400, headers }
-      );
-    }
-    if (!['DEPOSIT', 'WITHDRAWAL'].includes(type)) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Type invalide' }),
-        { status: 400, headers }
-      );
-    }
-
-    // Récupérer le wallet Faroty de l'utilisateur
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('faroty_wallet_id, username')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile?.faroty_wallet_id) {
-      // Créer le wallet s'il n'existe pas encore
-      const walletRes = await fetch(
-        `${Deno.env.get('SUPABASE_URL')}/functions/v1/create-faroty-wallet`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id }),
-        }
-      );
-      const walletData = await walletRes.json();
-      if (!walletData.success) {
-        throw new Error('Impossible de créer le wallet de paiement.');
-      }
-      profile.faroty_wallet_id = walletData.walletId;
-    }
-
-    // Pour les retraits : vérifier le solde Supabase
-    if (type === 'WITHDRAWAL') {
-      const { data: wallet } = await supabase
-        .from('wallets')
-        .select('balance')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!wallet || wallet.balance < amount) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Solde insuffisant' }),
-          { status: 400, headers }
-        );
-      }
-    }
-
-    // Créer la session Faroty
-    const methodLabel = method === 'orange_money' ? 'Orange Money' : 'MTN Money';
-    const typeLabel   = type === 'DEPOSIT' ? 'Recharge' : 'Retrait';
+    const successUrl = "skillz://payment-success";
+    const cancelUrl  = "skillz://payment-cancel";
 
     const sessionBody = {
-      walletId:     profile.faroty_wallet_id,
-      currencyCode: 'XAF',
-      cancelUrl:    `${APP_URL}/payment/cancel`,
-      successUrl:   `${APP_URL}/payment/success`,
+      walletId:     farotyWalletId,
+      currencyCode: "XAF",
+      cancelUrl,
+      successUrl,
       type,
       amount,
-      contentType:  'CAMPAIGN_SIMPLE',
+      contentType:  "CAMPAIGN_SIMPLE",
       dynamicContentData: {
-        title:       `SKILL'Z — ${typeLabel}`,
-        description: `${typeLabel} via ${methodLabel} — ${amount} FCFA`,
-        target:      `${amount} XAF`,
-        imageUrl:    'https://media.faroty.me/api/media/public/default.png',
+        title:       type === "DEPOSIT"
+                       ? "Recharge SKILL'Z - " + username
+                       : "Retrait SKILL'Z - " + username,
+        description: type === "DEPOSIT"
+                       ? "Recharge ton wallet pour jouer des défis"
+                       : "Retrait de tes gains SKILL'Z",
+        target:      amount + " XAF",
+        imageUrl:    "https://skillz.app/logo.png",
       },
     };
 
-    const farotyRes = await fetch(`${FAROTY_URL}/payment-sessions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-KEY':    FAROTY_API_KEY,
-      },
-      body: JSON.stringify(sessionBody),
-    });
+    console.log("Session body:", JSON.stringify(sessionBody));
 
-    const farotyData = await farotyRes.json();
-    console.log('Faroty session response:', JSON.stringify(farotyData));
+    const res = await fetch(
+      `${FAROTY_PAY_URL}/payments/api/v1/payment-sessions`,
+      {
+        method:  "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-KEY":    FAROTY_API_KEY,
+        },
+        body: JSON.stringify(sessionBody),
+      }
+    );
 
-    if (!farotyRes.ok || !farotyData?.data?.sessionToken) {
-      throw new Error(farotyData?.message || 'Erreur création session Faroty');
+    const text = await res.text();
+    console.log("Faroty session status:", res.status);
+    console.log("Faroty session body:", text);
+
+    const data = JSON.parse(text);
+
+    if (!res.ok || !data.success) {
+      throw new Error("Faroty error: " + (data.message || text));
     }
 
-    const { sessionToken, sessionUrl } = farotyData.data;
+    const sessionToken = data.data && data.data.sessionToken ? data.data.sessionToken : null;
+    const sessionUrl   = data.data && data.data.sessionUrl   ? data.data.sessionUrl   : null;
 
-    // Enregistrer la session dans Supabase
-    await supabase.from('payment_sessions').insert({
-      user_id:      user.id,
-      faroty_token: sessionToken,
-      type,
-      amount,
-      method,
-      status:       'pending',
-      faroty_data:  farotyData.data,
-    });
+    if (!sessionUrl) throw new Error("sessionUrl non reçue de Faroty");
 
-    // Pour les retraits : bloquer le montant immédiatement
-    if (type === 'WITHDRAWAL') {
-      await supabase.rpc('withdraw_funds', {
-        p_user_id: user.id,
-        p_amount:  amount,
-        p_label:   `Retrait ${methodLabel} (en cours)`,
-      });
-    }
+    // Enregistrer transaction pending
+    const { data: txData } = await supabase
+      .from("faroty_transactions")
+      .insert({
+        user_id:           userId,
+        faroty_session_id: sessionToken,
+        faroty_wallet_id:  farotyWalletId,
+        type:              type.toLowerCase(),
+        amount,
+        currency:          "XAF",
+        status:            "pending",
+      })
+      .select()
+      .single();
+
+    console.log("Transaction pending créée:", txData ? txData.id : "erreur");
+    console.log("=== create-payment-session SUCCESS ===");
 
     return new Response(
       JSON.stringify({
-        success:      true,
+        success:       true,
         sessionToken,
         sessionUrl,
+        transactionId: txData ? txData.id : null,
         amount,
         type,
       }),
-      { status: 200, headers }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
-  } catch (error) {
-    console.error('create-payment-session error:', error);
+  } catch (err) {
+    console.error("=== create-payment-session ERROR ===", err.message);
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers }
+      JSON.stringify({ success: false, error: err.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

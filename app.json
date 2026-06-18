@@ -18,7 +18,10 @@
       "associatedDomains": ["applinks:skillz.app"],
       "infoPlist": {
         "NSCameraUsageDescription": "SKILL'Z utilise la caméra pour analyser tes mouvements pendant les défis physiques et valider automatiquement tes performances.",
-        "NSMicrophoneUsageDescription": "SKILL'Z utilise le microphone pour synchroniser les défis."
+        "NSMicrophoneUsageDescription": "SKILL'Z utilise le microphone pour synchroniser les défis.",
+        "NSMotionUsageDescription": "SKILL'Z utilise les capteurs pour détecter tes mouvements.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "SKILL'Z suit ta course.",
+        "NSLocationWhenInUseUsageDescription": "SKILL'Z mesure ta distance."
       }
     },
     "android": {
@@ -40,7 +43,12 @@
       ],
       "permissions": [
         "CAMERA",
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "ACTIVITY_RECOGNITION",
+        "BODY_SENSORS"
       ]
     },
     "web": {
@@ -53,6 +61,14 @@
         "expo-camera",
         {
           "cameraPermission": "SKILL'Z utilise la caméra pour valider tes défis physiques en analysant tes mouvements."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "SKILL'Z a besoin de ta position pour mesurer tes courses.",
+          "locationAlwaysPermission": "SKILL'Z suit ta course en arrière-plan.",
+          "locationWhenInUsePermission": "SKILL'Z utilise ta position pour mesurer la distance."
         }
       ]
     ],

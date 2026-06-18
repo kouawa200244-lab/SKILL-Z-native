@@ -1,96 +1,99 @@
 // @ts-nocheck
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
-const FAROTY_BASE_URL    = 'https://api-pay-prod.faroty.me/payments/api/v1';
-const FAROTY_API_KEY = Deno.env.get('FAROTY_API_KEY')!;
-const ACCOUNT_ID     = Deno.env.get('FAROTY_ACCOUNT_ID')!;
-const LEGAL_ID       = Deno.env.get('FAROTY_LEGAL_ID')!;
-const FAROTY_PRIVATE_KEY = Deno.env.get('FAROTY_PRIVATE_KEY')!;
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 serve(async (req) => {
-  // Vérifier méthode
-  if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
 
-  // Headers CORS
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-  };
+  const SUPABASE_URL         = Deno.env.get("SUPABASE_URL")              || "";
+  const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const FAROTY_PAY_URL       = "https://api-pay-prod.faroty.me";
+  const FAROTY_API_KEY       = Deno.env.get("FAROTY_API_KEY")            || "";
+  const FAROTY_ACCOUNT_ID    = Deno.env.get("FAROTY_ACCOUNT_ID")         || "";
+  const FAROTY_LEGAL_ID      = Deno.env.get("FAROTY_LEGAL_ID")           || "";
 
   try {
-    const { userId } = await req.json();
-    if (!userId) {
+    const body          = await req.json();
+    const userId        = body.userId        || "";
+    const farotyUserId  = body.farotyUserId  || "";
+
+    console.log("=== create-faroty-wallet START ===");
+    console.log("userId:", userId, "| farotyUserId:", farotyUserId);
+    console.log("FAROTY_API_KEY ok:", !!FAROTY_API_KEY);
+    console.log("FAROTY_ACCOUNT_ID ok:", !!FAROTY_ACCOUNT_ID);
+
+    if (!userId || !farotyUserId) {
       return new Response(
-        JSON.stringify({ success: false, error: 'userId manquant' }),
-        { status: 400, headers }
+        JSON.stringify({ success: false, error: "userId et farotyUserId requis" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Client Supabase admin (pour écrire dans la DB)
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
-
-    // Vérifier si l'utilisateur a déjà un wallet Faroty
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('faroty_wallet_id, username')
-      .eq('id', userId)
-      .single();
-
-    if (profile?.faroty_wallet_id) {
-      return new Response(
-        JSON.stringify({ success: true, walletId: profile.faroty_wallet_id }),
-        { status: 200, headers }
-      );
-    }
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
     // Créer le wallet Faroty
-    const response = await fetch(`${FAROTY_BASE_URL}/wallets`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-KEY':    FAROTY_API_KEY,
-        'X-Account-ID': ACCOUNT_ID,
-      },
-      body: JSON.stringify({
-        accountId:       ACCOUNT_ID,
-        currencyCode:    'XAF',
-        walletType:      'PERSONAL',
-        legalIdentifier: LEGAL_ID,
-        refId:           REF_ID,
-      }),
-    });
-
-    const data = await response.json();
-    console.log('Faroty wallet response:', JSON.stringify(data));
-
-    if (!response.ok || !data?.data?.id) {
-      throw new Error(data?.message || 'Erreur création wallet Faroty');
-    }
-
-    const farotyWalletId = data.data.id;
-
-    // Sauvegarder dans Supabase
-    await supabase
-      .from('profiles')
-      .update({ faroty_wallet_id: farotyWalletId })
-      .eq('id', userId);
-
-    return new Response(
-      JSON.stringify({ success: true, walletId: farotyWalletId }),
-      { status: 200, headers }
+    const res = await fetch(
+      `${FAROTY_PAY_URL}/payments/api/v1/wallets`,
+      {
+        method:  "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-KEY":    FAROTY_API_KEY,
+        },
+        body: JSON.stringify({
+          accountId:       FAROTY_ACCOUNT_ID,
+          currencyCode:    "XAF",
+          walletType:      "PERSONAL",
+          legalIdentifier: FAROTY_LEGAL_ID,
+          refId:           farotyUserId,
+        }),
+      }
     );
 
-  } catch (error) {
-    console.error('create-faroty-wallet error:', error);
+    const text = await res.text();
+    console.log("Faroty wallet status:", res.status);
+    console.log("Faroty wallet body:", text);
+
+    const data = JSON.parse(text);
+
+    if (!res.ok) {
+      throw new Error("Faroty error: " + (data.message || text));
+    }
+
+    const farotyWalletId = (data && data.data && data.data.id)
+                         ? data.data.id
+                         : (data && data.id ? data.id : null);
+
+    if (!farotyWalletId) {
+      throw new Error("Wallet ID non reçu de Faroty");
+    }
+
+    // Mettre à jour Supabase
+    await Promise.all([
+      supabase.from("profiles").update({ faroty_wallet_id: farotyWalletId }).eq("id", userId),
+      supabase.from("wallets").update({ faroty_wallet_id: farotyWalletId, faroty_synced: true }).eq("user_id", userId),
+    ]);
+
+    console.log("=== create-faroty-wallet SUCCESS ===", farotyWalletId);
+
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers }
+      JSON.stringify({ success: true, farotyWalletId, walletData: data.data || data }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (err) {
+    console.error("=== create-faroty-wallet ERROR ===", err.message);
+    return new Response(
+      JSON.stringify({ success: false, error: err.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
